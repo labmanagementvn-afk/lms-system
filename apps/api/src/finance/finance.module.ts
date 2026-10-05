@@ -31,6 +31,6 @@ export function paymentProvidersFactory(): Map<string, PaymentProvider> {
     PaymentsService,
     { provide: PAYMENT_PROVIDERS, useFactory: paymentProvidersFactory },
   ],
-  exports: [PaymentsService],
+  exports: [PaymentsService, InvoicesService],
 })
 export class FinanceModule {}

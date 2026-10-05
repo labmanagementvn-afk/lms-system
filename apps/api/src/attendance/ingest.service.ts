@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AttendanceDevice, AttendanceIdentity, Direction, EventMethod, EventSource, IdentityMethod, Prisma, School } from '@prisma/client';
 import { zonedToUtc } from '../common/time';
+import { AlertsService } from '../notifications/alerts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NormalizedEvent } from './adapters/normalized-event';
 import { IngestEventDto } from './attendance.dto';
@@ -30,7 +31,10 @@ type DeviceWithSchool = AttendanceDevice & { school: School };
 
 @Injectable()
 export class IngestService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly alerts: AlertsService,
+  ) {}
 
   /** Converts the generic JSON API payload into normalized events. */
   fromGeneric(events: IngestEventDto[], timeZone: string): NormalizedEvent[] {
@@ -114,6 +118,10 @@ export class IngestService {
       this.prisma.gateEvent.createMany({ data: rows, skipDuplicates: true }),
       this.prisma.attendanceDevice.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } }),
     ]);
+    await this.alerts.gateEvents(
+      device.schoolId,
+      rows.filter((r) => r.studentId).map((r) => ({ studentId: r.studentId!, direction: r.direction!, occurredAt: r.occurredAt as Date })),
+    );
 
     const count = (s: IngestStatus) => results.filter((r) => r.status === s).length;
     return {

@@ -1,5 +1,7 @@
 // Phase 1: school core (teachers, students, classes, timetable) and gate attendance.
 // Phase 2: finance (tuition, QR payments, MISA sync), store, canteen, library, health.
+// Phase 3: notifications, parent accounts, homeroom attendance and logbook, school bus,
+// admissions, HR and assets.
 // Every tenant-owned row carries schoolId. Money is stored as whole VND in Int columns.
 
 generator client {
@@ -11,10 +13,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ADMIN / STAFF / TEACHER use the school portal. PARENT and DRIVER only reach
+// routes that name their role explicitly (see AuthGuard).
 enum Role {
   ADMIN
   STAFF
   TEACHER
+  PARENT
+  DRIVER
 }
 
 enum Gender {
@@ -108,42 +114,72 @@ model School {
   identities    AttendanceIdentity[]
   gateEvents    GateEvent[]
 
-  financeSettings   FinanceSettings?
-  feeItems          FeeItem[]
-  discounts         StudentDiscount[]
-  campaigns         BillingCampaign[]
-  invoices          Invoice[]
-  payments          Payment[]
-  bankTransactions  BankTransaction[]
-  accountingJobs    AccountingSyncJob[]
-  inventoryItems    InventoryItem[]
-  stockMovements    StockMovement[]
-  storeOrders       StoreOrder[]
-  mealMenus         MealMenu[]
-  mealRegistrations MealRegistration[]
-  books             Book[]
-  bookCopies        BookCopy[]
-  loans             Loan[]
-  reservations      BookReservation[]
-  healthProfiles    HealthProfile[]
-  healthChecks      HealthCheck[]
-  vaccinations      Vaccination[]
-  healthIncidents   HealthIncident[]
+  financeSettings       FinanceSettings?
+  feeItems              FeeItem[]
+  discounts             StudentDiscount[]
+  campaigns             BillingCampaign[]
+  invoices              Invoice[]
+  payments              Payment[]
+  bankTransactions      BankTransaction[]
+  accountingJobs        AccountingSyncJob[]
+  inventoryItems        InventoryItem[]
+  stockMovements        StockMovement[]
+  storeOrders           StoreOrder[]
+  mealMenus             MealMenu[]
+  mealRegistrations     MealRegistration[]
+  books                 Book[]
+  bookCopies            BookCopy[]
+  loans                 Loan[]
+  reservations          BookReservation[]
+  healthProfiles        HealthProfile[]
+  healthChecks          HealthCheck[]
+  vaccinations          Vaccination[]
+  healthIncidents       HealthIncident[]
+  notificationSettings  NotificationSettings?
+  notifications         Notification[]
+  announcements         Announcement[]
+  homeroomAttendances   HomeroomAttendance[]
+  lessonLogs            LessonLog[]
+  vehicles              Vehicle[]
+  busStaffs             BusStaff[]
+  busRoutes             BusRoute[]
+  busAssignments        BusAssignment[]
+  busTrips              BusTrip[]
+  boardingEvents        BoardingEvent[]
+  admissionRounds       AdmissionRound[]
+  admissionApplications AdmissionApplication[]
+  serviceRegistrations  ServiceRegistration[]
+  employees             Employee[]
+  leaveRequests         LeaveRequest[]
+  assetCategories       AssetCategory[]
+  suppliers             Supplier[]
+  assets                Asset[]
+  assetLoans            AssetLoan[]
+  assetAudits           AssetAudit[]
 }
 
 model User {
-  id           String   @id @default(cuid())
-  schoolId     String
-  email        String   @unique
-  passwordHash String
-  fullName     String
-  role         Role
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  schoolId           String
+  // Staff log in with email; parents and drivers with their phone number (digits only).
+  email              String?  @unique
+  phone              String?  @unique
+  passwordHash       String
+  fullName           String
+  role               Role
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  school  School   @relation(fields: [schoolId], references: [id])
-  teacher Teacher?
+  school        School                 @relation(fields: [schoolId], references: [id])
+  teacher       Teacher?
+  guardians     Guardian[]
+  notifications Notification[]
+  pushTokens    PushToken[]
+  rsvps         AnnouncementResponse[]
+  busStaff      BusStaff?
+  employee      Employee?
 
   @@index([schoolId])
 }
@@ -154,9 +190,10 @@ model Subject {
   code     String
   name     String
 
-  school    School           @relation(fields: [schoolId], references: [id])
-  teachers  TeacherSubject[]
-  timetable TimetableEntry[]
+  school     School           @relation(fields: [schoolId], references: [id])
+  teachers   TeacherSubject[]
+  timetable  TimetableEntry[]
+  lessonLogs LessonLog[]
 
   @@unique([schoolId, code])
 }
@@ -183,6 +220,8 @@ model Teacher {
   identities      AttendanceIdentity[]
   gateEvents      GateEvent[]
   loans           Loan[]
+  lessonLogs      LessonLog[]
+  employee        Employee?
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -228,6 +267,13 @@ model Student {
   vaccinations      Vaccination[]
   healthIncidents   HealthIncident[]
 
+  notifications        Notification[]
+  homeroomAttendance   HomeroomAttendance[]
+  busAssignments       BusAssignment[]
+  boardingEvents       BoardingEvent[]
+  application          AdmissionApplication?
+  serviceRegistrations ServiceRegistration[]
+
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
 }
@@ -240,10 +286,14 @@ model Guardian {
   phone        String
   email        String?
   isPrimary    Boolean              @default(false)
+  // Parent login account; one account covers every child with the same phone.
+  userId       String?
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
 
   @@index([studentId])
+  @@index([userId])
 }
 
 model AcademicYear {
@@ -259,6 +309,10 @@ model AcademicYear {
   enrollments Enrollment[]
   timetable   TimetableEntry[]
   campaigns   BillingCampaign[]
+
+  admissionRounds      AdmissionRound[]
+  serviceRegistrations ServiceRegistration[]
+  busAssignments       BusAssignment[]
 
   @@unique([schoolId, name])
 }
@@ -277,6 +331,10 @@ model Class {
   homeroomTeacher Teacher?         @relation(fields: [homeroomTeacherId], references: [id])
   enrollments     Enrollment[]
   timetable       TimetableEntry[]
+
+  homeroomAttendance HomeroomAttendance[]
+  lessonLogs         LessonLog[]
+  applications       AdmissionApplication[]
 
   @@unique([academicYearId, name])
   @@index([schoolId])
@@ -1000,4 +1058,789 @@ model HealthIncident {
 
   @@index([schoolId, occurredAt])
   @@index([studentId])
+}
+
+// ============================================================================
+// Phase 3: notifications and announcements
+// ============================================================================
+
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  ZALO
+  SMS
+  EMAIL
+}
+
+enum NotificationKind {
+  GATE_IN
+  GATE_OUT
+  HOMEROOM_ABSENT
+  HOMEROOM_LATE
+  BUS_BOARD
+  BUS_ALIGHT
+  INVOICE_ISSUED
+  PAYMENT_RECEIVED
+  HEALTH_INCIDENT
+  LEAVE_DECIDED
+  ANNOUNCEMENT
+  EVENT
+  SYSTEM
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+}
+
+enum RsvpResponse {
+  GOING
+  NOT_GOING
+  MAYBE
+}
+
+// Which channels a school pays for. IN_APP is always on.
+model NotificationSettings {
+  id       String                @id @default(cuid())
+  schoolId String                @unique
+  channels NotificationChannel[] @default([IN_APP])
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+// One message to one user. Deliveries fan it out to the enabled channels.
+model Notification {
+  id             String           @id @default(cuid())
+  schoolId       String
+  userId         String
+  kind           NotificationKind
+  title          String
+  body           String
+  data           Json?
+  studentId      String?
+  announcementId String?
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  school       School                 @relation(fields: [schoolId], references: [id])
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  student      Student?               @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  announcement Announcement?          @relation(fields: [announcementId], references: [id], onDelete: SetNull)
+  deliveries   NotificationDelivery[]
+
+  @@index([userId, createdAt])
+  @@index([schoolId, createdAt])
+  @@index([announcementId])
+}
+
+// Outbox for push / Zalo / SMS / email, pushed by the dispatcher with retries.
+model NotificationDelivery {
+  id             String              @id @default(cuid())
+  notificationId String
+  channel        NotificationChannel
+  status         SyncStatus          @default(PENDING)
+  attempts       Int                 @default(0)
+  lastError      String?
+  externalRef    String?
+  nextAttemptAt  DateTime            @default(now())
+  sentAt         DateTime?
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([status, nextAttemptAt])
+}
+
+// Device tokens for the future mobile apps (FCM / APNs).
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Sự kiện / thông báo: a campaign sent to an audience (roles, classes, grades).
+model Announcement {
+  id          String                @id @default(cuid())
+  schoolId    String
+  kind        NotificationKind      @default(ANNOUNCEMENT)
+  title       String
+  body        String
+  eventAt     DateTime?
+  location    String?
+  rsvp        Boolean               @default(false)
+  // { roles: Role[], classIds: string[], gradeLevels: number[] }; empty lists mean everyone in that dimension.
+  audience    Json
+  channels    NotificationChannel[] @default([IN_APP])
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  status      AnnouncementStatus    @default(DRAFT)
+  recipients  Int                   @default(0)
+  createdById String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  school        School                 @relation(fields: [schoolId], references: [id])
+  notifications Notification[]
+  responses     AnnouncementResponse[]
+
+  @@index([schoolId, status, scheduledAt])
+}
+
+model AnnouncementResponse {
+  id             String       @id @default(cuid())
+  announcementId String
+  userId         String
+  response       RsvpResponse
+  respondedAt    DateTime     @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+}
+
+// ============================================================================
+// Phase 3: homeroom attendance (điểm danh đầu giờ) and lesson logbook (sổ đầu bài)
+// ============================================================================
+
+enum HomeroomStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum LessonLogStatus {
+  DONE
+  CANCELLED
+}
+
+model HomeroomAttendance {
+  id           String         @id @default(cuid())
+  schoolId     String
+  classId      String
+  studentId    String
+  date         DateTime       @db.Date
+  status       HomeroomStatus
+  note         String?
+  recordedById String?
+  updatedAt    DateTime       @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, date, studentId])
+  @@index([schoolId, date])
+  @@index([studentId, date])
+}
+
+// One period taught: what was covered, who was absent, the teacher's remark and a rating.
+model LessonLog {
+  id               String          @id @default(cuid())
+  schoolId         String
+  classId          String
+  subjectId        String
+  teacherId        String
+  date             DateTime        @db.Date
+  periodNumber     Int
+  semester         Int
+  content          String?
+  comment          String?
+  rating           String?
+  status           LessonLogStatus @default(DONE)
+  absentStudentIds String[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id])
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+
+  @@unique([classId, date, periodNumber])
+  @@index([teacherId, date])
+}
+
+// ============================================================================
+// Phase 3: school bus (xe tuyến)
+// ============================================================================
+
+enum VehicleStatus {
+  ACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
+enum BusStaffRole {
+  DRIVER
+  MONITOR
+}
+
+enum BusDirection {
+  PICKUP
+  DROPOFF
+}
+
+enum BusTripStatus {
+  PLANNED
+  RUNNING
+  DONE
+  CANCELLED
+}
+
+enum BoardingType {
+  BOARD
+  ALIGHT
+}
+
+model Vehicle {
+  id               String        @id @default(cuid())
+  schoolId         String
+  plateNumber      String
+  model            String?
+  capacity         Int
+  inspectionExpiry DateTime?     @db.Date
+  insuranceExpiry  DateTime?     @db.Date
+  status           VehicleStatus @default(ACTIVE)
+  notes            String?
+
+  school School     @relation(fields: [schoolId], references: [id])
+  routes BusRoute[]
+  trips  BusTrip[]
+
+  @@unique([schoolId, plateNumber])
+}
+
+// Drivers and bus monitors. A linked user (role DRIVER) can use the driver page.
+model BusStaff {
+  id            String       @id @default(cuid())
+  schoolId      String
+  fullName      String
+  phone         String
+  role          BusStaffRole
+  licenseNumber String?
+  licenseExpiry DateTime?    @db.Date
+  userId        String?      @unique
+  isActive      Boolean      @default(true)
+
+  school        School     @relation(fields: [schoolId], references: [id])
+  user          User?      @relation(fields: [userId], references: [id])
+  drivingRoutes BusRoute[] @relation("RouteDriver")
+  monitorRoutes BusRoute[] @relation("RouteMonitor")
+  drivenTrips   BusTrip[]
+
+  @@index([schoolId])
+}
+
+model BusRoute {
+  id        String       @id @default(cuid())
+  schoolId  String
+  name      String
+  direction BusDirection
+  vehicleId String?
+  driverId  String?
+  monitorId String?
+  startTime String // HH:mm, school local time
+  isActive  Boolean      @default(true)
+
+  school      School          @relation(fields: [schoolId], references: [id])
+  vehicle     Vehicle?        @relation(fields: [vehicleId], references: [id])
+  driver      BusStaff?       @relation("RouteDriver", fields: [driverId], references: [id])
+  monitor     BusStaff?       @relation("RouteMonitor", fields: [monitorId], references: [id])
+  stops       BusStop[]
+  assignments BusAssignment[]
+  trips       BusTrip[]
+
+  @@unique([schoolId, name])
+}
+
+model BusStop {
+  id          String  @id @default(cuid())
+  routeId     String
+  order       Int
+  name        String
+  address     String?
+  lat         Float
+  lng         Float
+  plannedTime String? // HH:mm
+
+  route       BusRoute        @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  assignments BusAssignment[]
+  boardings   BoardingEvent[]
+
+  @@unique([routeId, order])
+}
+
+model BusAssignment {
+  id             String  @id @default(cuid())
+  schoolId       String
+  routeId        String
+  stopId         String
+  studentId      String
+  academicYearId String
+  isActive       Boolean @default(true)
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  route        BusRoute     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop         BusStop      @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([routeId, studentId])
+  @@index([studentId])
+}
+
+// One run of a route on one day. lastLat/lastLng is denormalized for the live map.
+model BusTrip {
+  id             String        @id @default(cuid())
+  schoolId       String
+  routeId        String
+  date           DateTime      @db.Date
+  status         BusTripStatus @default(PLANNED)
+  vehicleId      String?
+  driverId       String?
+  startedAt      DateTime?
+  endedAt        DateTime?
+  lastLat        Float?
+  lastLng        Float?
+  lastLocationAt DateTime?
+
+  school    School          @relation(fields: [schoolId], references: [id])
+  route     BusRoute        @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle?        @relation(fields: [vehicleId], references: [id])
+  driver    BusStaff?       @relation(fields: [driverId], references: [id])
+  locations BusLocation[]
+  boardings BoardingEvent[]
+
+  @@unique([routeId, date])
+  @@index([schoolId, date, status])
+}
+
+model BusLocation {
+  id         String   @id @default(cuid())
+  tripId     String
+  lat        Float
+  lng        Float
+  speed      Float?
+  heading    Float?
+  recordedAt DateTime
+
+  trip BusTrip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, recordedAt])
+}
+
+model BoardingEvent {
+  id           String       @id @default(cuid())
+  schoolId     String
+  tripId       String
+  studentId    String
+  type         BoardingType
+  stopId       String?
+  lat          Float?
+  lng          Float?
+  occurredAt   DateTime     @default(now())
+  recordedById String?
+  note         String?
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  trip    BusTrip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  student Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  stop    BusStop? @relation(fields: [stopId], references: [id], onDelete: SetNull)
+
+  @@index([tripId, occurredAt])
+  @@index([studentId, occurredAt])
+}
+
+// ============================================================================
+// Phase 3: admissions (tuyển sinh) and start-of-year service registration
+// ============================================================================
+
+enum AdmissionRoundStatus {
+  OPEN
+  CLOSED
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  SCREENING
+  ACCEPTED
+  REJECTED
+  ENROLLED
+  WITHDRAWN
+}
+
+enum ApplicationSource {
+  ONLINE
+  IMPORT
+  MANUAL
+}
+
+enum RegistrationStatus {
+  SUBMITTED
+  CONFIRMED
+}
+
+model AdmissionRound {
+  id             String               @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  name           String
+  gradeLevel     Int
+  startDate      DateTime             @db.Date
+  endDate        DateTime             @db.Date
+  capacity       Int?
+  description    String?
+  status         AdmissionRoundStatus @default(OPEN)
+  createdAt      DateTime             @default(now())
+
+  school       School                 @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear           @relation(fields: [academicYearId], references: [id])
+  applications AdmissionApplication[]
+
+  @@unique([schoolId, name])
+}
+
+model AdmissionApplication {
+  id                   String               @id @default(cuid())
+  schoolId             String
+  roundId              String
+  code                 String
+  fullName             String
+  gender               Gender?
+  dateOfBirth          DateTime             @db.Date
+  address              String?
+  previousSchool       String?
+  guardianName         String
+  guardianPhone        String
+  guardianEmail        String?
+  guardianRelationship GuardianRelationship @default(GUARDIAN)
+  notes                String?
+  status               ApplicationStatus    @default(SUBMITTED)
+  source               ApplicationSource    @default(ONLINE)
+  score                Float?
+  screeningNote        String?
+  classId              String?
+  studentId            String?              @unique
+  submittedAt          DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  school  School         @relation(fields: [schoolId], references: [id])
+  round   AdmissionRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  class   Class?         @relation(fields: [classId], references: [id])
+  student Student?       @relation(fields: [studentId], references: [id])
+
+  @@unique([schoolId, code])
+  @@unique([roundId, fullName, dateOfBirth, guardianPhone])
+  @@index([roundId, status])
+}
+
+// Đăng ký dịch vụ đầu năm: canteen, bus, uniform sizes... one per student per year.
+model ServiceRegistration {
+  id                String             @id @default(cuid())
+  schoolId          String
+  studentId         String
+  academicYearId    String
+  canteen           Boolean            @default(false)
+  bus               Boolean            @default(false)
+  busStopNote       String?
+  uniform           Json?
+  extras            Json?
+  note              String?
+  status            RegistrationStatus @default(SUBMITTED)
+  submittedByUserId String?
+  updatedAt         DateTime           @updatedAt
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, academicYearId])
+  @@index([schoolId, academicYearId, status])
+}
+
+// ============================================================================
+// Phase 3: HR (nhân sự)
+// ============================================================================
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  PROBATION
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  RESIGNED
+  RETIRED
+}
+
+enum EmployeeDocumentKind {
+  DEGREE
+  CERTIFICATE
+  LICENSE
+  OTHER
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  UNPAID
+  MATERNITY
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Every person on the payroll. Teachers link to their Teacher record.
+model Employee {
+  id             String         @id @default(cuid())
+  schoolId       String
+  code           String
+  fullName       String
+  gender         Gender?
+  dateOfBirth    DateTime?      @db.Date
+  idNumber       String? // CCCD
+  phone          String?
+  email          String?
+  address        String?
+  department     String?
+  position       String
+  employmentType EmploymentType @default(FULL_TIME)
+  hireDate       DateTime?      @db.Date
+  status         EmployeeStatus @default(ACTIVE)
+  teacherId      String?        @unique
+  userId         String?        @unique
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  school      School               @relation(fields: [schoolId], references: [id])
+  teacher     Teacher?             @relation(fields: [teacherId], references: [id])
+  user        User?                @relation(fields: [userId], references: [id])
+  documents   EmployeeDocument[]
+  contracts   EmploymentContract[]
+  workHistory WorkHistory[]
+  leaves      LeaveRequest[]
+  assets      Asset[]
+  assetLoans  AssetLoan[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, status])
+}
+
+model EmployeeDocument {
+  id         String               @id @default(cuid())
+  employeeId String
+  kind       EmployeeDocumentKind
+  name       String
+  issuer     String?
+  issuedAt   DateTime?            @db.Date
+  expiresAt  DateTime?            @db.Date
+  fileUrl    String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model EmploymentContract {
+  id         String         @id @default(cuid())
+  employeeId String
+  type       EmploymentType
+  startDate  DateTime       @db.Date
+  endDate    DateTime?      @db.Date
+  salary     Int?
+  notes      String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model WorkHistory {
+  id           String    @id @default(cuid())
+  employeeId   String
+  fromDate     DateTime  @db.Date
+  toDate       DateTime? @db.Date
+  organization String
+  position     String
+  notes        String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model LeaveRequest {
+  id           String      @id @default(cuid())
+  schoolId     String
+  employeeId   String
+  type         LeaveType
+  fromDate     DateTime    @db.Date
+  toDate       DateTime    @db.Date
+  days         Float
+  reason       String
+  status       LeaveStatus @default(PENDING)
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+  createdAt    DateTime    @default(now())
+
+  school   School   @relation(fields: [schoolId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, status])
+  @@index([employeeId])
+}
+
+// ============================================================================
+// Phase 3: assets (tài sản)
+// ============================================================================
+
+enum AssetStatus {
+  IN_USE
+  IN_STORAGE
+  UNDER_MAINTENANCE
+  LENT
+  DISPOSED
+}
+
+enum AuditStatus {
+  OPEN
+  CLOSED
+}
+
+model AssetCategory {
+  id              String @id @default(cuid())
+  schoolId        String
+  name            String
+  usefulLifeYears Int    @default(5)
+
+  school School  @relation(fields: [schoolId], references: [id])
+  assets Asset[]
+
+  @@unique([schoolId, name])
+}
+
+model Supplier {
+  id       String  @id @default(cuid())
+  schoolId String
+  name     String
+  phone    String?
+  email    String?
+  address  String?
+  taxCode  String?
+
+  school School  @relation(fields: [schoolId], references: [id])
+  assets Asset[]
+
+  @@unique([schoolId, name])
+}
+
+model Asset {
+  id                  String      @id @default(cuid())
+  schoolId            String
+  code                String
+  name                String
+  categoryId          String
+  supplierId          String?
+  serialNumber        String?
+  purchaseDate        DateTime?   @db.Date
+  purchasePrice       Int?
+  // Overrides the category default for straight-line depreciation.
+  usefulLifeYears     Int?
+  location            String?
+  custodianEmployeeId String?
+  status              AssetStatus @default(IN_USE)
+  disposedAt          DateTime?   @db.Date
+  notes               String?
+  createdAt           DateTime    @default(now())
+
+  school      School             @relation(fields: [schoolId], references: [id])
+  category    AssetCategory      @relation(fields: [categoryId], references: [id])
+  supplier    Supplier?          @relation(fields: [supplierId], references: [id])
+  custodian   Employee?          @relation(fields: [custodianEmployeeId], references: [id])
+  maintenance AssetMaintenance[]
+  loans       AssetLoan[]
+  auditItems  AssetAuditItem[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, status])
+}
+
+model AssetMaintenance {
+  id          String    @id @default(cuid())
+  assetId     String
+  date        DateTime  @db.Date
+  description String
+  cost        Int?
+  vendor      String?
+  nextDueDate DateTime? @db.Date
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, date])
+}
+
+model AssetLoan {
+  id                 String    @id @default(cuid())
+  schoolId           String
+  assetId            String
+  borrowerEmployeeId String?
+  borrowerName       String?
+  department         String?
+  lentAt             DateTime  @default(now())
+  dueAt              DateTime?
+  returnedAt         DateTime?
+  note               String?
+
+  school   School    @relation(fields: [schoolId], references: [id])
+  asset    Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  borrower Employee? @relation(fields: [borrowerEmployeeId], references: [id])
+
+  @@index([assetId, returnedAt])
+}
+
+// Kiểm kê: a stocktake session with one line per asset checked.
+model AssetAudit {
+  id        String      @id @default(cuid())
+  schoolId  String
+  name      String
+  date      DateTime    @db.Date
+  status    AuditStatus @default(OPEN)
+  createdAt DateTime    @default(now())
+
+  school School           @relation(fields: [schoolId], references: [id])
+  items  AssetAuditItem[]
+
+  @@index([schoolId, date])
+}
+
+model AssetAuditItem {
+  id        String  @id @default(cuid())
+  auditId   String
+  assetId   String
+  found     Boolean @default(true)
+  condition String?
+  note      String?
+
+  audit AssetAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  asset Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([auditId, assetId])
 }

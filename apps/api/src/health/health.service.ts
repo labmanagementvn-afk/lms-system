@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { Page, pageArgs } from '../common/pagination';
 import { localDate, zonedDayRange } from '../common/time';
+import { AlertsService } from '../notifications/alerts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { bmi, daysUntil } from './health-rules';
 import {
@@ -32,7 +33,10 @@ const date = (d?: string) => (d ? new Date(d) : undefined);
 
 @Injectable()
 export class HealthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly alerts: AlertsService,
+  ) {}
 
   async record(schoolId: string, studentId: string) {
     const s = await this.prisma.student.findFirst({
@@ -129,6 +133,7 @@ export class HealthService {
       data: { ...dto, schoolId, occurredAt: new Date(dto.occurredAt), recordedById: userId },
       include: { student },
     });
+    await this.alerts.healthIncident(schoolId, incident.id);
     return { ...incident, student: flat(incident.student) };
   }
 

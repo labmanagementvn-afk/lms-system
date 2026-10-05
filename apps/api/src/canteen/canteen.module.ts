@@ -3,5 +3,5 @@ import { AcademicYearsModule } from '../academic-years/academic-years';
 import { CanteenController } from './canteen.controller';
 import { CanteenService } from './canteen.service';
 
-@Module({ imports: [AcademicYearsModule], controllers: [CanteenController], providers: [CanteenService] })
+@Module({ imports: [AcademicYearsModule], controllers: [CanteenController], providers: [CanteenService], exports: [CanteenService] })
 export class CanteenModule {}

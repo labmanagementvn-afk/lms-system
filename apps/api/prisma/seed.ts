@@ -3,6 +3,15 @@
 import { DeviceType, Direction, FeeUnit, Gender, GuardianRelationship, ItemCategory, MealType, PrismaClient, Role, Session } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { generateDeviceKey } from '../src/attendance/device-keys';
+import { seedAdmissions } from './seed/admissions';
+import { seedAnnouncements } from './seed/announcements';
+import { seedAssets } from './seed/assets';
+import { seedBus } from './seed/bus';
+import { SeedContext } from './seed/context';
+import { seedFinance } from './seed/finance';
+import { seedHomeroom } from './seed/homeroom';
+import { seedHr } from './seed/hr';
+import { seedParents } from './seed/parents';
 
 const prisma = new PrismaClient();
 
@@ -61,9 +70,11 @@ async function main() {
 
   const teacherPassword = await hash('Teacher@123');
   const teachers: Record<string, string> = {};
+  const teacherUsers: Record<string, string> = {};
   for (const [code, fullName, gender, subjectCodes] of TEACHERS) {
     const email = `${code.toLowerCase()}@demo.edu.vn`;
     const user = await prisma.user.create({ data: { schoolId, email, fullName, role: Role.TEACHER, passwordHash: teacherPassword } });
+    teacherUsers[code] = user.id;
     const t = await prisma.teacher.create({
       data: {
         schoolId,
@@ -199,9 +210,23 @@ async function main() {
   const book = await prisma.book.create({ data: { schoolId, title: 'Dế Mèn phiêu lưu ký', author: 'Tô Hoài', category: 'Văn học', isbn: '9786042088015' } });
   await prisma.bookCopy.createMany({ data: ['TV0001', 'TV0002', 'TV0003'].map((barcode) => ({ schoolId, bookId: book.id, barcode, shelf: 'A1' })) });
 
+  // Phase 3: parent accounts, homeroom attendance, announcements, bus, admissions, HR and assets.
+  const ctx: SeedContext = {
+    schoolId,
+    academicYearId: year.id,
+    classes,
+    teachers,
+    teacherUsers,
+    subjects,
+    studentIds,
+    adminUserId: (await prisma.user.findUniqueOrThrow({ where: { email: 'admin@demo.edu.vn' } })).id,
+    staffUserId: (await prisma.user.findUniqueOrThrow({ where: { email: 'baove@demo.edu.vn' } })).id,
+    hash,
+  };
   console.log('Seeded demo school.');
   console.log('  admin@demo.edu.vn / Admin@123, baove@demo.edu.vn / Staff@123, gv001@demo.edu.vn / Teacher@123');
   console.log(`  Gate device API key (shown once): ${key}`);
+  for (const seed of [seedFinance, seedParents, seedHomeroom, seedAnnouncements, seedBus, seedAdmissions, seedHr, seedAssets]) await seed(prisma, ctx);
 }
 
 main()

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { CampaignStatus, InvoiceSource, InvoiceStatus, Prisma, StudentStatus } from '@prisma/client';
 import { AcademicYearsService } from '../academic-years/academic-years';
+import { AlertsService } from '../notifications/alerts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { generatePaymentRef, invoiceStatus, LineInput, priceLines, totals } from './billing';
 import { CampaignDto, UpdateCampaignDto } from './finance.dto';
@@ -15,6 +16,7 @@ export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly years: AcademicYearsService,
+    private readonly alerts: AlertsService,
   ) {}
 
   async list(schoolId: string) {
@@ -145,7 +147,7 @@ export class CampaignsService {
     let created = 0;
     for (const student of todo) {
       const lines: LineInput[] = c.items.map((i) => ({ feeItemId: i.feeItemId, description: i.feeItem.name, quantity: i.quantity, unitPrice: i.amount }));
-      await this.prisma.$transaction(async (tx) => {
+      const invoiceId = await this.prisma.$transaction(async (tx) => {
         const priced = priceLines(lines, discounts.filter((d) => d.studentId === student.id), c.dueDate);
         const prior = c.carryOverDebt
           ? await tx.invoice.findMany({
@@ -178,7 +180,9 @@ export class CampaignsService {
             data: { status: InvoiceStatus.CARRIED_OVER, carriedToInvoiceId: invoice.id },
           });
         }
+        return invoice.id;
       });
+      await this.alerts.invoiceIssued(schoolId, invoiceId);
       created++;
     }
     if (c.status === CampaignStatus.DRAFT) {

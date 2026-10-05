@@ -31,7 +31,7 @@ cp .env.example .env.local
 pnpm dev                # http://localhost:3000
 ```
 
-Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên).
+Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên). Phase 3 adds a parent login (`0981000000 / Parent@123`, two children) and a driver login (`0912000001 / Driver@123`); the seed prints them.
 
 ## Features
 
@@ -52,7 +52,18 @@ Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `ba
 
 Payment and accounting integrations run against **sandbox implementations**; no real gateway or MISA credentials are configured.
 
-Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library.
+### Phase 3
+
+- **Ứng dụng phụ huynh** (`/parent`, phone-sized): one login per guardian phone, children switcher, today's gate status, monthly attendance, fees with VietQR, meal registration, health record, bus tracking, service registration, announcements with RSVP, live notifications. Accounts are created by the school from guardian records (*Tài khoản phụ huynh*), with first-login password change.
+- **Thông báo**: in-app inbox and server-sent events for everyone, plus an outbox for push / Zalo ZNS / SMS / email behind channel adapters (sandbox only), with retries and a delivery log. Alerts fire from gate scans, homeroom attendance, invoices, payments, health incidents, bus boarding and leave decisions. See [docs/notifications.md](docs/notifications.md).
+- **Điểm danh lớp & sổ đầu bài**: homeroom teachers mark the class in one tap, prefilled from the gate terminals; absences alert parents. Lesson logbook per timetable slot with content, rating, absentees and class statistics.
+- **Thông báo & sự kiện**: announcements and events to roles, classes or grades, scheduled or sent now, with read and RSVP statistics.
+- **Xe đưa đón**: vehicles with inspection/insurance expiry, drivers and monitors with a driver login, routes with ordered stops and student assignments, daily trips, a driver app (`/driver`) that starts the trip, streams GPS and records boarding/alighting (parents are notified), a live map for the school and the bus position in the parent app.
+- **Tuyển sinh & dịch vụ**: admission rounds, a public application form (`/apply/<school code>`) with status lookup, CSV import/export, screening, enrolment that creates the student, guardian and class placement; yearly service registration (canteen, bus, uniform, clubs) submitted by parents and confirmed by the school.
+- **Nhân sự**: employee records linked to teacher accounts, documents and contracts with expiry alerts, work history, leave requests with approval (employee is notified), self-service for staff and teachers.
+- **Tài sản**: categories, suppliers, assets with straight-line depreciation and book value, maintenance, lending, disposal and stocktakes with a missing-items report.
+
+Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT` and `DRIVER` only reach the parent and driver apps.
 
 ## Tests
 

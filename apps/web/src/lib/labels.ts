@@ -1,6 +1,6 @@
 // Vietnamese labels for API enums.
 
-export const ROLE: Record<string, string> = { ADMIN: 'Quản trị', STAFF: 'Nhân viên', TEACHER: 'Giáo viên' };
+export const ROLE: Record<string, string> = { ADMIN: 'Quản trị', STAFF: 'Nhân viên', TEACHER: 'Giáo viên', PARENT: 'Phụ huynh', DRIVER: 'Lái xe' };
 export const GENDER: Record<string, string> = { MALE: 'Nam', FEMALE: 'Nữ', OTHER: 'Khác' };
 export const TEACHER_STATUS: Record<string, string> = { ACTIVE: 'Đang công tác', ON_LEAVE: 'Tạm nghỉ', RESIGNED: 'Đã nghỉ việc' };
 export const STUDENT_STATUS: Record<string, string> = {
@@ -88,6 +88,101 @@ export const INCIDENT_SEVERITY: Record<string, { label: string; color: string }>
   MINOR: { label: 'Nhẹ', color: 'green' },
   MODERATE: { label: 'Trung bình', color: 'orange' },
   SERIOUS: { label: 'Nghiêm trọng', color: 'red' },
+};
+
+// ---- Phase 3 ----
+
+export const NOTIFICATION_KIND: Record<string, string> = {
+  GATE_IN: 'Đến trường',
+  GATE_OUT: 'Rời trường',
+  HOMEROOM_ABSENT: 'Vắng mặt',
+  HOMEROOM_LATE: 'Đi muộn',
+  BUS_BOARD: 'Lên xe',
+  BUS_ALIGHT: 'Xuống xe',
+  INVOICE_ISSUED: 'Khoản thu mới',
+  PAYMENT_RECEIVED: 'Đã nhận thanh toán',
+  HEALTH_INCIDENT: 'Sự cố y tế',
+  LEAVE_DECIDED: 'Đơn nghỉ phép',
+  ANNOUNCEMENT: 'Thông báo',
+  EVENT: 'Sự kiện',
+  SYSTEM: 'Hệ thống',
+};
+export const NOTIFICATION_CHANNEL: Record<string, string> = { IN_APP: 'Trong ứng dụng', PUSH: 'Push (điện thoại)', ZALO: 'Zalo ZNS', SMS: 'SMS', EMAIL: 'Email' };
+export const ANNOUNCEMENT_STATUS: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: 'Nháp', color: 'default' },
+  SCHEDULED: { label: 'Hẹn giờ gửi', color: 'blue' },
+  SENT: { label: 'Đã gửi', color: 'green' },
+};
+export const RSVP: Record<string, { label: string; color: string }> = {
+  GOING: { label: 'Tham dự', color: 'green' },
+  NOT_GOING: { label: 'Không tham dự', color: 'red' },
+  MAYBE: { label: 'Chưa chắc', color: 'orange' },
+};
+export const HOMEROOM_STATUS: Record<string, { label: string; color: string }> = {
+  PRESENT: { label: 'Có mặt', color: 'green' },
+  ABSENT: { label: 'Vắng', color: 'red' },
+  LATE: { label: 'Đi muộn', color: 'orange' },
+  EXCUSED: { label: 'Vắng có phép', color: 'blue' },
+};
+export const LESSON_LOG_STATUS: Record<string, { label: string; color: string }> = {
+  DONE: { label: 'Đã dạy', color: 'green' },
+  CANCELLED: { label: 'Nghỉ tiết', color: 'default' },
+};
+export const VEHICLE_STATUS: Record<string, { label: string; color: string }> = {
+  ACTIVE: { label: 'Đang hoạt động', color: 'green' },
+  MAINTENANCE: { label: 'Bảo dưỡng', color: 'orange' },
+  RETIRED: { label: 'Ngừng sử dụng', color: 'default' },
+};
+export const BUS_STAFF_ROLE: Record<string, string> = { DRIVER: 'Lái xe', MONITOR: 'Phụ xe' };
+export const BUS_DIRECTION: Record<string, string> = { PICKUP: 'Đón (sáng)', DROPOFF: 'Trả (chiều)' };
+export const BUS_TRIP_STATUS: Record<string, { label: string; color: string }> = {
+  PLANNED: { label: 'Chưa chạy', color: 'default' },
+  RUNNING: { label: 'Đang chạy', color: 'blue' },
+  DONE: { label: 'Hoàn thành', color: 'green' },
+  CANCELLED: { label: 'Đã hủy', color: 'red' },
+};
+export const BOARDING_TYPE: Record<string, string> = { BOARD: 'Lên xe', ALIGHT: 'Xuống xe' };
+export const ADMISSION_ROUND_STATUS: Record<string, { label: string; color: string }> = {
+  OPEN: { label: 'Đang mở', color: 'green' },
+  CLOSED: { label: 'Đã đóng', color: 'default' },
+};
+export const APPLICATION_STATUS: Record<string, { label: string; color: string }> = {
+  SUBMITTED: { label: 'Mới nộp', color: 'blue' },
+  SCREENING: { label: 'Đang xét', color: 'orange' },
+  ACCEPTED: { label: 'Trúng tuyển', color: 'green' },
+  REJECTED: { label: 'Không đạt', color: 'red' },
+  ENROLLED: { label: 'Đã nhập học', color: 'purple' },
+  WITHDRAWN: { label: 'Rút hồ sơ', color: 'default' },
+};
+export const APPLICATION_SOURCE: Record<string, string> = { ONLINE: 'Trực tuyến', IMPORT: 'Nhập từ file', MANUAL: 'Nhập tay' };
+export const REGISTRATION_STATUS: Record<string, { label: string; color: string }> = {
+  SUBMITTED: { label: 'Đã gửi', color: 'blue' },
+  CONFIRMED: { label: 'Đã xác nhận', color: 'green' },
+};
+export const EMPLOYMENT_TYPE: Record<string, string> = { FULL_TIME: 'Toàn thời gian', PART_TIME: 'Bán thời gian', CONTRACT: 'Hợp đồng', PROBATION: 'Thử việc' };
+export const EMPLOYEE_STATUS: Record<string, { label: string; color: string }> = {
+  ACTIVE: { label: 'Đang làm việc', color: 'green' },
+  ON_LEAVE: { label: 'Tạm nghỉ', color: 'orange' },
+  RESIGNED: { label: 'Đã nghỉ việc', color: 'default' },
+  RETIRED: { label: 'Nghỉ hưu', color: 'default' },
+};
+export const EMPLOYEE_DOCUMENT_KIND: Record<string, string> = { DEGREE: 'Bằng cấp', CERTIFICATE: 'Chứng chỉ', LICENSE: 'Giấy phép', OTHER: 'Khác' };
+export const LEAVE_TYPE: Record<string, string> = { ANNUAL: 'Nghỉ phép năm', SICK: 'Nghỉ ốm', UNPAID: 'Nghỉ không lương', MATERNITY: 'Thai sản', OTHER: 'Khác' };
+export const LEAVE_STATUS: Record<string, { label: string; color: string }> = {
+  PENDING: { label: 'Chờ duyệt', color: 'blue' },
+  APPROVED: { label: 'Đã duyệt', color: 'green' },
+  REJECTED: { label: 'Từ chối', color: 'red' },
+};
+export const ASSET_STATUS: Record<string, { label: string; color: string }> = {
+  IN_USE: { label: 'Đang sử dụng', color: 'green' },
+  IN_STORAGE: { label: 'Trong kho', color: 'default' },
+  UNDER_MAINTENANCE: { label: 'Đang sửa chữa', color: 'orange' },
+  LENT: { label: 'Cho mượn', color: 'blue' },
+  DISPOSED: { label: 'Đã thanh lý', color: 'red' },
+};
+export const AUDIT_STATUS: Record<string, { label: string; color: string }> = {
+  OPEN: { label: 'Đang kiểm kê', color: 'blue' },
+  CLOSED: { label: 'Đã chốt', color: 'green' },
 };
 
 /** 1500000 -> "1.500.000 ₫" */

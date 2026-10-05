@@ -3,19 +3,26 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { api, getToken, setToken } from './api';
 
+export type RoleName = 'ADMIN' | 'STAFF' | 'TEACHER' | 'PARENT' | 'DRIVER';
+
 export interface Me {
   id: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
   fullName: string;
-  role: 'ADMIN' | 'STAFF' | 'TEACHER';
+  role: RoleName;
+  mustChangePassword: boolean;
   teacherId: string | null;
-  school: { id: string; name: string; timezone: string; lateAfter: string };
+  school: { id: string; name: string; code: string; timezone: string; lateAfter: string };
 }
 
 interface AuthState {
   me: Me | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /** Signs in with an email (staff) or a phone number (parents, drivers). */
+  login: (identifier: string, password: string) => Promise<Me>;
+  /** Reloads the profile, e.g. after a password change. */
+  refresh: () => Promise<Me>;
   logout: () => void;
 }
 
@@ -36,10 +43,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await api<{ accessToken: string }>('/auth/login', { method: 'POST', body: { email, password } });
+  const login = useCallback(async (identifier: string, password: string) => {
+    const id = identifier.trim();
+    const body = id.includes('@') ? { email: id, password } : { phone: id, password };
+    const res = await api<{ accessToken: string }>('/auth/login', { method: 'POST', body });
     setToken(res.accessToken);
-    setMe(await api<Me>('/auth/me'));
+    const profile = await api<Me>('/auth/me');
+    setMe(profile);
+    return profile;
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const profile = await api<Me>('/auth/me');
+    setMe(profile);
+    return profile;
   }, []);
 
   const logout = useCallback(() => {
@@ -48,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = '/login';
   }, []);
 
-  return <AuthContext.Provider value={{ me, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ me, loading, login, refresh, logout }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
@@ -56,6 +73,10 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth outside AuthProvider');
   return ctx;
 }
+
+/** Where each role lands after signing in: the parent and driver apps are separate from the school portal. */
+export const homeFor = (role: RoleName) => (role === 'PARENT' ? '/parent' : role === 'DRIVER' ? '/driver' : '/');
+export const isPortalRole = (role: RoleName) => role === 'ADMIN' || role === 'STAFF' || role === 'TEACHER';
 
 export const canManage = (me: Me | null) => me?.role === 'ADMIN';
 export const canEditStudents = (me: Me | null) => me?.role === 'ADMIN' || me?.role === 'STAFF';

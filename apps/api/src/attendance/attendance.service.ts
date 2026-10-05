@@ -3,6 +3,7 @@ import { EventMethod, EventSource, Prisma, StudentStatus, TeacherStatus } from '
 import { AuthUser } from '../common/auth-user';
 import { pageArgs } from '../common/pagination';
 import { localDate, zonedDayRange } from '../common/time';
+import { AlertsService } from '../notifications/alerts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DailyQuery, EventsQuery, ManualEventDto } from './attendance.dto';
 import { summarizeDay } from './daily-summary';
@@ -11,7 +12,10 @@ const person = { select: { id: true, code: true, fullName: true } };
 
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly alerts: AlertsService,
+  ) {}
 
   async manual(user: AuthUser, dto: ManualEventDto) {
     if (!!dto.studentId === !!dto.teacherId) throw new BadRequestException('Chọn đúng một học sinh hoặc một giáo viên');
@@ -19,7 +23,7 @@ export class AttendanceService {
     if (dto.teacherId) await this.prisma.teacher.findFirstOrThrow({ where: { id: dto.teacherId, schoolId: user.schoolId } });
     const occurredAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
     if (occurredAt.getTime() > Date.now() + 60_000) throw new BadRequestException('Thời gian không được ở tương lai');
-    return this.prisma.gateEvent.create({
+    const event = await this.prisma.gateEvent.create({
       data: {
         schoolId: user.schoolId,
         studentId: dto.studentId,
@@ -33,6 +37,8 @@ export class AttendanceService {
       },
       include: { student: person, teacher: person },
     });
+    if (event.studentId) await this.alerts.gateEvents(user.schoolId, [{ studentId: event.studentId, direction: event.direction, occurredAt }]);
+    return event;
   }
 
   async events(schoolId: string, query: EventsQuery) {
