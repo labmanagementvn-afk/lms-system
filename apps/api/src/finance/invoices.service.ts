@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InvoiceSource, InvoiceStatus, Prisma } from '@prisma/client';
 import { AcademicYearsService } from '../academic-years/academic-years';
 import { Page, pageArgs } from '../common/pagination';
+import { AlertsService } from '../notifications/alerts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { generatePaymentRef, invoiceStatus, priceLines, totals } from './billing';
 import { InvoiceQuery, ManualInvoiceDto } from './finance.dto';
@@ -18,6 +19,7 @@ export class InvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly years: AcademicYearsService,
+    private readonly alerts: AlertsService,
   ) {}
 
   private where(schoolId: string, query: InvoiceQuery): Prisma.InvoiceWhereInput {
@@ -77,7 +79,7 @@ export class InvoicesService {
       dto.dueDate ? new Date(dto.dueDate) : new Date(),
     );
     const t = totals(priced);
-    return this.prisma.invoice.create({
+    const invoice = await this.prisma.invoice.create({
       data: {
         schoolId,
         studentId: student.id,
@@ -91,6 +93,8 @@ export class InvoicesService {
       },
       include: { lines: true },
     });
+    await this.alerts.invoiceIssued(schoolId, invoice.id);
+    return invoice;
   }
 
   /** Cancels an invoice nothing has been paid on, and gives carried-over debts back to their original invoices. */

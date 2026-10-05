@@ -5,6 +5,7 @@ import { receiptVoidVoucher, receiptVoucher } from '../accounting/misa-payloads'
 import { AuthUser } from '../common/auth-user';
 import { Page, pageArgs } from '../common/pagination';
 import { localDate, zonedDayRange } from '../common/time';
+import { AlertsService } from '../notifications/alerts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { extractPaymentRef, invoiceStatus } from './billing';
 import { BankTxnQuery, CashPaymentDto, FinanceSettingsDto, PaymentQuery } from './finance.dto';
@@ -31,6 +32,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
+    private readonly alerts: AlertsService,
     @Inject(PAYMENT_PROVIDERS) private readonly providers: Map<string, PaymentProvider>,
   ) {}
 
@@ -94,12 +96,14 @@ export class PaymentsService {
     return payment;
   }
 
-  recordCash(user: AuthUser, invoiceId: string, dto: CashPaymentDto) {
+  async recordCash(user: AuthUser, invoiceId: string, dto: CashPaymentDto) {
     const method = dto.method ?? PaymentMethod.CASH;
     if (method === PaymentMethod.QR) throw new BadRequestException('Thanh toán QR được ghi nhận tự động từ ngân hàng');
-    return this.prisma.$transaction((tx) =>
+    const payment = await this.prisma.$transaction((tx) =>
       this.record(tx, user.schoolId, { invoiceId, amount: dto.amount, method, note: dto.note, collectedById: user.userId }),
     );
+    await this.alerts.paymentReceived(user.schoolId, payment.id);
+    return payment;
   }
 
   async void(user: AuthUser, id: string, reason: string) {
@@ -229,9 +233,10 @@ export class PaymentsService {
             allowOverpay: true,
           });
           await tx.bankTransaction.update({ where: { id: txn.id }, data: { status: BankTxnStatus.MATCHED, paymentId: payment.id } });
-          return { status: 'matched' as const, invoiceId: invoice.id };
+          return { status: 'matched' as const, invoiceId: invoice.id, paymentId: payment.id };
         });
-        results.push({ externalId: t.externalId, ...outcome });
+        if (outcome.status === 'matched') await this.alerts.paymentReceived(schoolId, outcome.paymentId);
+        results.push({ externalId: t.externalId, status: outcome.status, invoiceId: outcome.status === 'matched' ? outcome.invoiceId : undefined });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
           results.push({ externalId: t.externalId, status: 'duplicate' });
@@ -273,8 +278,8 @@ export class PaymentsService {
   }
 
   /** Accountant assigns an unmatched transfer to an invoice by hand. */
-  matchTransaction(user: AuthUser, id: string, invoiceId: string) {
-    return this.prisma.$transaction(async (tx) => {
+  async matchTransaction(user: AuthUser, id: string, invoiceId: string) {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const txn = await tx.bankTransaction.findFirst({ where: { id, schoolId: user.schoolId } });
       if (!txn) throw new NotFoundException('Không tìm thấy giao dịch');
       if (txn.status !== BankTxnStatus.UNMATCHED) throw new BadRequestException('Giao dịch đã được xử lý');
@@ -289,6 +294,8 @@ export class PaymentsService {
       });
       return tx.bankTransaction.update({ where: { id }, data: { status: BankTxnStatus.MATCHED, paymentId: payment.id } });
     });
+    await this.alerts.paymentReceived(user.schoolId, updated.paymentId!);
+    return updated;
   }
 
   async ignoreTransaction(schoolId: string, id: string, note: string) {

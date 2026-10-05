@@ -1,10 +1,10 @@
 'use client';
 
-import { LockOutlined, MailOutlined } from '@ant-design/icons';
+import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useAuth } from '@/lib/auth';
+import { homeFor, useAuth } from '@/lib/auth';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -12,12 +12,12 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onFinish(values: { email: string; password: string }) {
+  async function onFinish(values: { identifier: string; password: string }) {
     setLoading(true);
     setError(null);
     try {
-      await login(values.email, values.password);
-      router.replace('/');
+      const me = await login(values.identifier, values.password);
+      router.replace(homeFor(me.role));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -32,12 +32,12 @@ export default function LoginPage() {
           Đăng nhập
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ textAlign: 'center' }}>
-          Hệ thống quản lý trường học
+          Cán bộ, giáo viên dùng email; phụ huynh và lái xe dùng số điện thoại
         </Typography.Paragraph>
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
         <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Nhập email hợp lệ' }]}>
-            <Input prefix={<MailOutlined />} autoComplete="username" />
+          <Form.Item name="identifier" label="Email hoặc số điện thoại" rules={[{ required: true, message: 'Nhập email hoặc số điện thoại' }]}>
+            <Input prefix={<UserOutlined />} autoComplete="username" inputMode="email" />
           </Form.Item>
           <Form.Item name="password" label="Mật khẩu" rules={[{ required: true, message: 'Nhập mật khẩu' }]}>
             <Input.Password prefix={<LockOutlined />} autoComplete="current-password" />
