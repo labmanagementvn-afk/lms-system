@@ -1,0 +1,21 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #f5f7fb;
+}
+
+.timetable td.ant-table-cell {
+  vertical-align: top;
+}
+
+.tt-cell {
+  min-height: 56px;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.tt-cell:hover {
+  background: #eef2ff;
+}
