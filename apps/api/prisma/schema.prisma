@@ -1,0 +1,378 @@
+// Phase 1 schema: school core (teachers, students, classes, timetable)
+// and gate attendance. Every tenant-owned row carries schoolId.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+  TEACHER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum TeacherStatus {
+  ACTIVE
+  ON_LEAVE
+  RESIGNED
+}
+
+enum StudentStatus {
+  STUDYING
+  TRANSFERRED
+  DROPPED
+  GRADUATED
+}
+
+enum GuardianRelationship {
+  FATHER
+  MOTHER
+  GUARDIAN
+  OTHER
+}
+
+enum Session {
+  MORNING
+  AFTERNOON
+}
+
+enum DeviceType {
+  FACE
+  FINGERPRINT
+  CARD
+  QR
+  MULTI
+}
+
+// BIOMETRIC: face and/or fingerprint enrolled on terminals, keyed by the
+// terminal's person ID. CARD / QR: keyed by card number or QR payload.
+enum IdentityMethod {
+  BIOMETRIC
+  CARD
+  QR
+}
+
+enum EventMethod {
+  FACE
+  FINGERPRINT
+  CARD
+  QR
+  MANUAL
+  UNKNOWN
+}
+
+enum Direction {
+  IN
+  OUT
+  UNKNOWN
+}
+
+enum EventSource {
+  DEVICE
+  MANUAL
+}
+
+model School {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  address   String?
+  // IANA timezone used for "school day" boundaries and device local times.
+  timezone  String   @default("Asia/Ho_Chi_Minh")
+  // Students whose first check-in is after this local time (HH:mm) are late.
+  lateAfter String   @default("07:15")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  teachers      Teacher[]
+  students      Student[]
+  subjects      Subject[]
+  academicYears AcademicYear[]
+  classes       Class[]
+  periods       Period[]
+  timetable     TimetableEntry[]
+  devices       AttendanceDevice[]
+  identities    AttendanceIdentity[]
+  gateEvents    GateEvent[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  schoolId     String
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  teacher Teacher?
+
+  @@index([schoolId])
+}
+
+model Subject {
+  id       String @id @default(cuid())
+  schoolId String
+  code     String
+  name     String
+
+  school    School           @relation(fields: [schoolId], references: [id])
+  teachers  TeacherSubject[]
+  timetable TimetableEntry[]
+
+  @@unique([schoolId, code])
+}
+
+model Teacher {
+  id          String        @id @default(cuid())
+  schoolId    String
+  code        String
+  fullName    String
+  gender      Gender?
+  dateOfBirth DateTime?     @db.Date
+  phone       String?
+  email       String?
+  status      TeacherStatus @default(ACTIVE)
+  userId      String?       @unique
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  school          School               @relation(fields: [schoolId], references: [id])
+  user            User?                @relation(fields: [userId], references: [id])
+  subjects        TeacherSubject[]
+  homeroomClasses Class[]
+  timetable       TimetableEntry[]
+  identities      AttendanceIdentity[]
+  gateEvents      GateEvent[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, fullName])
+}
+
+model TeacherSubject {
+  teacherId String
+  subjectId String
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@id([teacherId, subjectId])
+}
+
+model Student {
+  id          String        @id @default(cuid())
+  schoolId    String
+  code        String
+  fullName    String
+  gender      Gender?
+  dateOfBirth DateTime?     @db.Date
+  address     String?
+  status      StudentStatus @default(STUDYING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  school      School               @relation(fields: [schoolId], references: [id])
+  guardians   Guardian[]
+  enrollments Enrollment[]
+  identities  AttendanceIdentity[]
+  gateEvents  GateEvent[]
+
+  @@unique([schoolId, code])
+  @@index([schoolId, fullName])
+}
+
+model Guardian {
+  id           String               @id @default(cuid())
+  studentId    String
+  fullName     String
+  relationship GuardianRelationship
+  phone        String
+  email        String?
+  isPrimary    Boolean              @default(false)
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+}
+
+model AcademicYear {
+  id        String   @id @default(cuid())
+  schoolId  String
+  name      String
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  isCurrent Boolean  @default(false)
+
+  school      School           @relation(fields: [schoolId], references: [id])
+  classes     Class[]
+  enrollments Enrollment[]
+  timetable   TimetableEntry[]
+
+  @@unique([schoolId, name])
+}
+
+model Class {
+  id                String  @id @default(cuid())
+  schoolId          String
+  academicYearId    String
+  name              String
+  gradeLevel        Int
+  homeroomTeacherId String?
+  room              String?
+
+  school          School           @relation(fields: [schoolId], references: [id])
+  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id])
+  homeroomTeacher Teacher?         @relation(fields: [homeroomTeacherId], references: [id])
+  enrollments     Enrollment[]
+  timetable       TimetableEntry[]
+
+  @@unique([academicYearId, name])
+  @@index([schoolId])
+}
+
+// A student belongs to at most one class per academic year.
+model Enrollment {
+  id             String   @id @default(cuid())
+  classId        String
+  studentId      String
+  academicYearId String
+  enrolledAt     DateTime @default(now())
+
+  class        Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, academicYearId])
+  @@index([classId])
+}
+
+// Bell schedule: "Tiết 1" 07:00-07:45 etc.
+model Period {
+  id        String  @id @default(cuid())
+  schoolId  String
+  number    Int
+  session   Session
+  startTime String
+  endTime   String
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@unique([schoolId, number])
+}
+
+// One cell of the timetable. Uniques stop a class or a teacher being double-booked;
+// room clashes are checked in the service because room is optional.
+model TimetableEntry {
+  id             String  @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  classId        String
+  subjectId      String
+  teacherId      String
+  dayOfWeek      Int // 1 = Monday ... 7 = Sunday
+  periodNumber   Int
+  room           String?
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  class        Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id])
+  teacher      Teacher      @relation(fields: [teacherId], references: [id])
+
+  @@unique([classId, semester, dayOfWeek, periodNumber])
+  @@unique([teacherId, academicYearId, semester, dayOfWeek, periodNumber])
+  @@index([schoolId, academicYearId, semester])
+}
+
+// A gate terminal (face, fingerprint, card reader...). Devices authenticate
+// either with an API key (generic JSON API) or by serial number (ZKTeco ADMS push).
+model AttendanceDevice {
+  id               String     @id @default(cuid())
+  schoolId         String
+  name             String
+  type             DeviceType
+  vendor           String?
+  serialNumber     String?    @unique
+  location         String?
+  defaultDirection Direction  @default(UNKNOWN)
+  apiKeyPrefix     String     @unique
+  apiKeyHash       String
+  isActive         Boolean    @default(true)
+  lastSeenAt       DateTime?
+  createdAt        DateTime   @default(now())
+
+  school School      @relation(fields: [schoolId], references: [id])
+  events GateEvent[]
+
+  @@index([schoolId])
+}
+
+// Maps the person ID stored on a terminal (or a card number) to a student or
+// teacher. BIOMETRIC identities require recorded consent (Decree 13/2023/ND-CP:
+// a parent or guardian for students); revoking consent deactivates them.
+model AttendanceIdentity {
+  id                  String         @id @default(cuid())
+  schoolId            String
+  method              IdentityMethod
+  externalId          String
+  studentId           String?
+  teacherId           String?
+  consentGivenBy      String?
+  consentRelationship String?
+  consentAt           DateTime?
+  consentReference    String?
+  revokedAt           DateTime?
+  createdAt           DateTime       @default(now())
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, method, externalId])
+  @@index([studentId])
+  @@index([teacherId])
+}
+
+model GateEvent {
+  id               String      @id @default(cuid())
+  schoolId         String
+  deviceId         String?
+  externalEventId  String?
+  externalPersonId String?
+  studentId        String?
+  teacherId        String?
+  method           EventMethod
+  direction        Direction
+  occurredAt       DateTime
+  source           EventSource
+  recordedById     String?
+  note             String?
+  rawPayload       Json?
+  createdAt        DateTime    @default(now())
+
+  school  School            @relation(fields: [schoolId], references: [id])
+  device  AttendanceDevice? @relation(fields: [deviceId], references: [id])
+  student Student?          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher Teacher?          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, externalEventId])
+  @@index([schoolId, occurredAt])
+  @@index([studentId, occurredAt])
+  @@index([teacherId, occurredAt])
+}
