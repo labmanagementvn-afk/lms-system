@@ -1,6 +1,6 @@
 // Demo data for local development: one school with teachers, classes, students,
 // a bell schedule, a sample timetable and one gate terminal.
-import { DeviceType, Direction, Gender, GuardianRelationship, PrismaClient, Role, Session } from '@prisma/client';
+import { DeviceType, Direction, FeeUnit, Gender, GuardianRelationship, ItemCategory, MealType, PrismaClient, Role, Session } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { generateDeviceKey } from '../src/attendance/device-keys';
 
@@ -171,6 +171,33 @@ async function main() {
   await prisma.attendanceIdentity.createMany({
     data: studentIds.map((studentId, i) => ({ schoolId, method: 'CARD' as const, externalId: String(1001 + i), studentId })),
   });
+
+  // Phase 2: finance, store, canteen, library demo data.
+  await prisma.financeSettings.create({
+    data: { schoolId, bankBin: '970436', bankName: 'Vietcombank', bankAccountNo: '0011000999999', bankAccountName: 'TRUONG THCS DEMO' },
+  });
+  await prisma.feeItem.createMany({
+    data: [
+      { schoolId, code: 'HOCPHI', name: 'Học phí', unit: FeeUnit.MONTH, defaultAmount: 1_500_000, accountingCode: '5113' },
+      { schoolId, code: 'BANTRU', name: 'Phí bán trú', unit: FeeUnit.MONTH, defaultAmount: 300_000, accountingCode: '5113' },
+      { schoolId, code: 'BHYT', name: 'Bảo hiểm y tế', unit: FeeUnit.YEAR, defaultAmount: 884_520 },
+    ],
+  });
+  await prisma.inventoryItem.createMany({
+    data: [
+      { schoolId, sku: 'AO-NAM-S', name: 'Áo đồng phục nam size S', category: ItemCategory.UNIFORM, price: 120_000, stockQty: 50 },
+      { schoolId, sku: 'AO-NU-S', name: 'Áo đồng phục nữ size S', category: ItemCategory.UNIFORM, price: 120_000, stockQty: 50 },
+      { schoolId, sku: 'SGK6', name: 'Bộ sách giáo khoa lớp 6', category: ItemCategory.BOOK, unit: 'bộ', price: 250_000, stockQty: 30 },
+    ],
+  });
+  const monday = new Date();
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  const menus = [['Cơm, thịt kho trứng, canh rau'], ['Cơm, cá sốt cà chua, canh bí'], ['Bún bò'], ['Cơm, gà rang, canh chua'], ['Phở gà']];
+  await prisma.mealMenu.createMany({
+    data: menus.map((dishes, i) => ({ schoolId, date: new Date(Date.UTC(monday.getUTCFullYear(), monday.getUTCMonth(), monday.getUTCDate() + i)), mealType: MealType.LUNCH, dishes, price: 30_000 })),
+  });
+  const book = await prisma.book.create({ data: { schoolId, title: 'Dế Mèn phiêu lưu ký', author: 'Tô Hoài', category: 'Văn học', isbn: '9786042088015' } });
+  await prisma.bookCopy.createMany({ data: ['TV0001', 'TV0002', 'TV0003'].map((barcode) => ({ schoolId, bookId: book.id, barcode, shelf: 'A1' })) });
 
   console.log('Seeded demo school.');
   console.log('  admin@demo.edu.vn / Admin@123, baove@demo.edu.vn / Staff@123, gv001@demo.edu.vn / Teacher@123');

@@ -1,6 +1,9 @@
-# LMS System: school management (phase 1)
+# LMS System: school management
 
-Phase 1 of the K-12 school platform: **teachers, students, classes, timetable and gate attendance** (điểm danh ra vào trường with fingerprint / face / card terminals), with a Vietnamese web portal.
+K-12 school platform with a Vietnamese web portal.
+
+- **Phase 1**: teachers, students, classes, timetable and gate attendance (điểm danh ra vào trường with fingerprint / face / card terminals).
+- **Phase 2**: finance and student services: tuition with VietQR payments and MISA sync, store/issuance with inventory, canteen, library, school health.
 
 | Part | Stack | Folder |
 |---|---|---|
@@ -38,7 +41,18 @@ Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `ba
 - **Thời khóa biểu**: bell schedule (tiết), timetable per class and per teacher, semester 1/2. Double-booking a class, teacher or room is rejected.
 - **Điểm danh ra vào**: device-agnostic ingestion API, ZKTeco ADMS push, manual entry, daily report (đúng giờ / đi muộn / vắng), unmatched-scan log, biometric consent tracking. See [docs/attendance-devices.md](docs/attendance-devices.md).
 
-Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance.
+### Phase 2
+
+- **Học phí**: fee items, per-student discounts, billing campaigns that issue invoices per student with carried-over debt, cash receipts, VietQR codes per invoice, bank-webhook auto matching, manual reconciliation, receipt voiding, collection summary per class. See [docs/finance-integrations.md](docs/finance-integrations.md).
+- **Đồng bộ MISA**: every receipt and stock movement goes through an outbox with retries; ships with a sandbox adapter only.
+- **Cấp phát**: uniforms, books and equipment with stock in/adjust, orders billed to students as invoices, issuing decrements stock.
+- **Bán trú**: daily menus with a registration cutoff, register/cancel meals per class, daily counts per class, monthly cost per student.
+- **Thư viện**: catalogue and copies by barcode, borrow/return/renew, loan limits, reservations, overdue list.
+- **Y tế học đường**: health profile and BHYT number, check-ups with BMI, vaccinations, incidents, expiring-insurance list. Restricted to admin and staff.
+
+Payment and accounting integrations run against **sandbox implementations**; no real gateway or MISA credentials are configured.
+
+Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library.
 
 ## Tests
 

@@ -1,5 +1,6 @@
-// Phase 1 schema: school core (teachers, students, classes, timetable)
-// and gate attendance. Every tenant-owned row carries schoolId.
+// Phase 1: school core (teachers, students, classes, timetable) and gate attendance.
+// Phase 2: finance (tuition, QR payments, MISA sync), store, canteen, library, health.
+// Every tenant-owned row carries schoolId. Money is stored as whole VND in Int columns.
 
 generator client {
   provider = "prisma-client-js"
@@ -106,6 +107,28 @@ model School {
   devices       AttendanceDevice[]
   identities    AttendanceIdentity[]
   gateEvents    GateEvent[]
+
+  financeSettings   FinanceSettings?
+  feeItems          FeeItem[]
+  discounts         StudentDiscount[]
+  campaigns         BillingCampaign[]
+  invoices          Invoice[]
+  payments          Payment[]
+  bankTransactions  BankTransaction[]
+  accountingJobs    AccountingSyncJob[]
+  inventoryItems    InventoryItem[]
+  stockMovements    StockMovement[]
+  storeOrders       StoreOrder[]
+  mealMenus         MealMenu[]
+  mealRegistrations MealRegistration[]
+  books             Book[]
+  bookCopies        BookCopy[]
+  loans             Loan[]
+  reservations      BookReservation[]
+  healthProfiles    HealthProfile[]
+  healthChecks      HealthCheck[]
+  vaccinations      Vaccination[]
+  healthIncidents   HealthIncident[]
 }
 
 model User {
@@ -159,6 +182,7 @@ model Teacher {
   timetable       TimetableEntry[]
   identities      AttendanceIdentity[]
   gateEvents      GateEvent[]
+  loans           Loan[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -192,6 +216,18 @@ model Student {
   identities  AttendanceIdentity[]
   gateEvents  GateEvent[]
 
+  discounts         StudentDiscount[]
+  invoices          Invoice[]
+  payments          Payment[]
+  storeOrders       StoreOrder[]
+  mealRegistrations MealRegistration[]
+  loans             Loan[]
+  reservations      BookReservation[]
+  healthProfile     HealthProfile?
+  healthChecks      HealthCheck[]
+  vaccinations      Vaccination[]
+  healthIncidents   HealthIncident[]
+
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
 }
@@ -218,10 +254,11 @@ model AcademicYear {
   endDate   DateTime @db.Date
   isCurrent Boolean  @default(false)
 
-  school      School           @relation(fields: [schoolId], references: [id])
+  school      School            @relation(fields: [schoolId], references: [id])
   classes     Class[]
   enrollments Enrollment[]
   timetable   TimetableEntry[]
+  campaigns   BillingCampaign[]
 
   @@unique([schoolId, name])
 }
@@ -375,4 +412,592 @@ model GateEvent {
   @@index([schoolId, occurredAt])
   @@index([studentId, occurredAt])
   @@index([teacherId, occurredAt])
+}
+
+// ============================================================================
+// Phase 2: finance
+// ============================================================================
+
+enum FeeUnit {
+  MONTH
+  TERM
+  YEAR
+  ONCE
+}
+
+enum DiscountKind {
+  PERCENT
+  AMOUNT
+}
+
+enum CampaignStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  // Remaining balance was moved onto a newer invoice as "nợ kỳ trước".
+  CARRIED_OVER
+  CANCELLED
+}
+
+enum InvoiceSource {
+  CAMPAIGN
+  STORE
+  MANUAL
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  QR
+}
+
+enum PaymentStatus {
+  CONFIRMED
+  VOIDED
+}
+
+enum BankTxnStatus {
+  MATCHED
+  UNMATCHED
+  IGNORED
+}
+
+enum SyncKind {
+  RECEIPT
+  RECEIPT_VOID
+  STOCK_IN
+  STOCK_OUT
+}
+
+enum SyncStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// Bank account that receives transfers (shown in VietQR codes). These are the
+// account details printed on a QR, not credentials; provider secrets live in env.
+model FinanceSettings {
+  id              String  @id @default(cuid())
+  schoolId        String  @unique
+  bankBin         String? // NAPAS bank BIN, e.g. 970436 (Vietcombank)
+  bankName        String?
+  bankAccountNo   String? @unique
+  bankAccountName String?
+  receiptPrefix   String  @default("PT")
+  nextReceiptNo   Int     @default(1)
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+// Khoản thu: tuition, meals, transport, insurance...
+model FeeItem {
+  id             String   @id @default(cuid())
+  schoolId       String
+  code           String
+  name           String
+  unit           FeeUnit  @default(MONTH)
+  defaultAmount  Int
+  // Revenue account / item code used when the receipt is pushed to accounting.
+  accountingCode String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  school        School            @relation(fields: [schoolId], references: [id])
+  campaignItems CampaignItem[]
+  invoiceLines  InvoiceLine[]
+  discounts     StudentDiscount[]
+
+  @@unique([schoolId, code])
+}
+
+// Per-student reduction (siblings, staff children, policy beneficiaries...).
+// Applies to one fee item, or to every item when feeItemId is null.
+model StudentDiscount {
+  id        String       @id @default(cuid())
+  schoolId  String
+  studentId String
+  feeItemId String?
+  kind      DiscountKind
+  value     Int // percent (0-100) or VND
+  reason    String
+  validFrom DateTime?    @db.Date
+  validTo   DateTime?    @db.Date
+  createdAt DateTime     @default(now())
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  student Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeItem FeeItem? @relation(fields: [feeItemId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+}
+
+// Đợt thu: a billing run (e.g. "Học phí tháng 10/2026") that issues one invoice per student.
+model BillingCampaign {
+  id             String         @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  name           String
+  dueDate        DateTime       @db.Date
+  // Empty = every grade / every class.
+  gradeLevels    Int[]
+  classIds       String[]
+  carryOverDebt  Boolean        @default(true)
+  status         CampaignStatus @default(DRAFT)
+  createdAt      DateTime       @default(now())
+
+  school       School         @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear   @relation(fields: [academicYearId], references: [id])
+  items        CampaignItem[]
+  invoices     Invoice[]
+
+  @@index([schoolId])
+}
+
+model CampaignItem {
+  id         String @id @default(cuid())
+  campaignId String
+  feeItemId  String
+  amount     Int
+  quantity   Int    @default(1)
+
+  campaign BillingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  feeItem  FeeItem         @relation(fields: [feeItemId], references: [id])
+
+  @@unique([campaignId, feeItemId])
+}
+
+model Invoice {
+  id                 String        @id @default(cuid())
+  schoolId           String
+  studentId          String
+  campaignId         String?
+  source             InvoiceSource
+  title              String
+  // Transfer reference printed in the QR and matched in bank webhooks (globally unique).
+  paymentRef         String        @unique
+  status             InvoiceStatus @default(UNPAID)
+  subtotal           Int
+  discountTotal      Int           @default(0)
+  total              Int
+  paidAmount         Int           @default(0)
+  dueDate            DateTime?     @db.Date
+  carriedToInvoiceId String?
+  issuedAt           DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  school      School           @relation(fields: [schoolId], references: [id])
+  student     Student          @relation(fields: [studentId], references: [id])
+  campaign    BillingCampaign? @relation(fields: [campaignId], references: [id])
+  carriedTo   Invoice?         @relation("CarryOver", fields: [carriedToInvoiceId], references: [id])
+  carriedFrom Invoice[]        @relation("CarryOver")
+  lines       InvoiceLine[]
+  payments    Payment[]
+  storeOrder  StoreOrder?
+
+  @@unique([campaignId, studentId])
+  @@index([schoolId, status])
+  @@index([studentId])
+}
+
+model InvoiceLine {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  feeItemId   String?
+  description String
+  quantity    Int     @default(1)
+  unitPrice   Int
+  discount    Int     @default(0)
+  amount      Int
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  feeItem FeeItem? @relation(fields: [feeItemId], references: [id])
+
+  @@index([invoiceId])
+}
+
+// Phiếu thu. One payment settles (part of) one invoice.
+model Payment {
+  id            String        @id @default(cuid())
+  schoolId      String
+  invoiceId     String
+  studentId     String
+  receiptNo     String
+  method        PaymentMethod
+  amount        Int
+  paidAt        DateTime      @default(now())
+  status        PaymentStatus @default(CONFIRMED)
+  collectedById String?
+  note          String?
+  voidedAt      DateTime?
+  voidReason    String?
+  createdAt     DateTime      @default(now())
+
+  school          School           @relation(fields: [schoolId], references: [id])
+  invoice         Invoice          @relation(fields: [invoiceId], references: [id])
+  student         Student          @relation(fields: [studentId], references: [id])
+  bankTransaction BankTransaction?
+
+  @@unique([schoolId, receiptNo])
+  @@index([schoolId, paidAt])
+  @@index([invoiceId])
+}
+
+// Incoming transfer reported by the payment provider's webhook. Kept even when it
+// cannot be matched to an invoice so the accountant can reconcile it by hand.
+model BankTransaction {
+  id          String        @id @default(cuid())
+  schoolId    String
+  provider    String
+  externalId  String
+  amount      Int
+  description String
+  occurredAt  DateTime
+  status      BankTxnStatus
+  paymentId   String?       @unique
+  note        String?
+  rawPayload  Json?
+  createdAt   DateTime      @default(now())
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@unique([provider, externalId])
+  @@index([schoolId, status])
+}
+
+// Outbox for the accounting system (MISA AMIS). One job per business document,
+// so retries never create duplicate vouchers.
+model AccountingSyncJob {
+  id            String     @id @default(cuid())
+  schoolId      String
+  kind          SyncKind
+  entityId      String
+  payload       Json
+  status        SyncStatus @default(PENDING)
+  attempts      Int        @default(0)
+  lastError     String?
+  externalRef   String?
+  nextAttemptAt DateTime   @default(now())
+  syncedAt      DateTime?
+  createdAt     DateTime   @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@unique([kind, entityId])
+  @@index([status, nextAttemptAt])
+  @@index([schoolId, createdAt])
+}
+
+// ============================================================================
+// Phase 2: issuance / store (cấp phát)
+// ============================================================================
+
+enum ItemCategory {
+  UNIFORM
+  BOOK
+  EQUIPMENT
+  OTHER
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUST
+}
+
+enum StoreOrderStatus {
+  PENDING
+  ISSUED
+  CANCELLED
+}
+
+model InventoryItem {
+  id             String       @id @default(cuid())
+  schoolId       String
+  sku            String
+  name           String
+  category       ItemCategory
+  unit           String       @default("cái")
+  price          Int
+  stockQty       Int          @default(0)
+  accountingCode String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  school     School           @relation(fields: [schoolId], references: [id])
+  movements  StockMovement[]
+  orderLines StoreOrderLine[]
+
+  @@unique([schoolId, sku])
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  schoolId    String
+  itemId      String
+  type        StockMovementType
+  // Signed change in stock: positive for IN, negative for OUT, either for ADJUST.
+  quantity    Int
+  unitCost    Int?
+  reason      String?
+  orderId     String?
+  createdById String?
+  createdAt   DateTime          @default(now())
+
+  school School        @relation(fields: [schoolId], references: [id])
+  item   InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  order  StoreOrder?   @relation(fields: [orderId], references: [id])
+
+  @@index([itemId, createdAt])
+}
+
+model StoreOrder {
+  id        String           @id @default(cuid())
+  schoolId  String
+  code      String
+  studentId String
+  status    StoreOrderStatus @default(PENDING)
+  total     Int
+  invoiceId String?          @unique
+  note      String?
+  issuedAt  DateTime?
+  createdAt DateTime         @default(now())
+
+  school    School           @relation(fields: [schoolId], references: [id])
+  student   Student          @relation(fields: [studentId], references: [id])
+  invoice   Invoice?         @relation(fields: [invoiceId], references: [id])
+  lines     StoreOrderLine[]
+  movements StockMovement[]
+
+  @@unique([schoolId, code])
+}
+
+model StoreOrderLine {
+  id        String @id @default(cuid())
+  orderId   String
+  itemId    String
+  quantity  Int
+  unitPrice Int
+  amount    Int
+
+  order StoreOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item  InventoryItem @relation(fields: [itemId], references: [id])
+}
+
+// ============================================================================
+// Phase 2: canteen (bán trú)
+// ============================================================================
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  SNACK
+}
+
+model MealMenu {
+  id       String   @id @default(cuid())
+  schoolId String
+  date     DateTime @db.Date
+  mealType MealType
+  dishes   String[]
+  price    Int
+  // Registrations can be changed until this local time (HH:mm) on the day.
+  cutoff   String   @default("08:30")
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@unique([schoolId, date, mealType])
+}
+
+model MealRegistration {
+  id          String    @id @default(cuid())
+  schoolId    String
+  studentId   String
+  date        DateTime  @db.Date
+  mealType    MealType
+  cancelledAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, date, mealType])
+  @@index([schoolId, date])
+}
+
+// ============================================================================
+// Phase 2: library
+// ============================================================================
+
+enum CopyStatus {
+  AVAILABLE
+  BORROWED
+  LOST
+  RETIRED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  FULFILLED
+  CANCELLED
+}
+
+model Book {
+  id        String   @id @default(cuid())
+  schoolId  String
+  isbn      String?
+  title     String
+  author    String?
+  publisher String?
+  year      Int?
+  category  String?
+  createdAt DateTime @default(now())
+
+  school       School            @relation(fields: [schoolId], references: [id])
+  copies       BookCopy[]
+  reservations BookReservation[]
+
+  @@index([schoolId, title])
+  @@index([schoolId, isbn])
+}
+
+model BookCopy {
+  id       String     @id @default(cuid())
+  schoolId String
+  bookId   String
+  barcode  String
+  status   CopyStatus @default(AVAILABLE)
+  shelf    String?
+
+  school School @relation(fields: [schoolId], references: [id])
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  loans  Loan[]
+
+  @@unique([schoolId, barcode])
+  @@index([bookId])
+}
+
+model Loan {
+  id         String    @id @default(cuid())
+  schoolId   String
+  copyId     String
+  studentId  String?
+  teacherId  String?
+  borrowedAt DateTime  @default(now())
+  dueAt      DateTime
+  returnedAt DateTime?
+  renewCount Int       @default(0)
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  copy    BookCopy @relation(fields: [copyId], references: [id], onDelete: Cascade)
+  student Student? @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher Teacher? @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, returnedAt, dueAt])
+  @@index([copyId])
+  @@index([studentId])
+}
+
+model BookReservation {
+  id          String            @id @default(cuid())
+  schoolId    String
+  bookId      String
+  studentId   String
+  status      ReservationStatus @default(ACTIVE)
+  createdAt   DateTime          @default(now())
+  fulfilledAt DateTime?
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  book    Book    @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([bookId, status, createdAt])
+}
+
+// ============================================================================
+// Phase 2: health (y tế học đường)
+// ============================================================================
+
+enum IncidentSeverity {
+  MINOR
+  MODERATE
+  SERIOUS
+}
+
+model HealthProfile {
+  id                String    @id @default(cuid())
+  schoolId          String
+  studentId         String    @unique
+  bloodType         String?
+  allergies         String?
+  chronicConditions String?
+  // Mã thẻ bảo hiểm y tế (BHYT)
+  insuranceNumber   String?
+  insuranceExpiry   DateTime? @db.Date
+  notes             String?
+  updatedAt         DateTime  @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model HealthCheck {
+  id          String   @id @default(cuid())
+  schoolId    String
+  studentId   String
+  checkedAt   DateTime @db.Date
+  heightCm    Float?
+  weightKg    Float?
+  bmi         Float?
+  visionLeft  String?
+  visionRight String?
+  dental      String?
+  conclusion  String?
+  createdAt   DateTime @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, checkedAt])
+}
+
+model Vaccination {
+  id        String   @id @default(cuid())
+  schoolId  String
+  studentId String
+  vaccine   String
+  dose      Int      @default(1)
+  givenAt   DateTime @db.Date
+  notes     String?
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+}
+
+model HealthIncident {
+  id               String           @id @default(cuid())
+  schoolId         String
+  studentId        String
+  occurredAt       DateTime
+  severity         IncidentSeverity
+  description      String
+  treatment        String?
+  guardianNotified Boolean          @default(false)
+  recordedById     String?
+  createdAt        DateTime         @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, occurredAt])
+  @@index([studentId])
 }
