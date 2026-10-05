@@ -14,7 +14,7 @@ export function configureApp(app: INestApplication) {
 
   const config = new DocumentBuilder()
     .setTitle('LMS System API')
-    .setDescription('Phase 1: teachers, students, classes, timetable, gate attendance')
+    .setDescription('Phase 1: school core and gate attendance. Phase 2: finance, store, canteen, library, health')
     .setVersion('0.1.0')
     .addBearerAuth()
     .build();

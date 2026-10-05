@@ -2,6 +2,11 @@
 
 import {
   ApartmentOutlined,
+  BookOutlined,
+  CoffeeOutlined,
+  DollarOutlined,
+  MedicineBoxOutlined,
+  ShopOutlined,
   CalendarOutlined,
   DashboardOutlined,
   IdcardOutlined,
@@ -56,6 +61,43 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
           : []),
       ],
     },
+    ...(me.role !== 'TEACHER'
+      ? [
+          {
+            key: 'finance',
+            icon: <DollarOutlined />,
+            label: 'Học phí',
+            children: [
+              { key: '/finance/invoices', label: <Link href="/finance/invoices">Công nợ & thu tiền</Link> },
+              { key: '/finance/campaigns', label: <Link href="/finance/campaigns">Đợt thu</Link> },
+              { key: '/finance/fee-items', label: <Link href="/finance/fee-items">Khoản thu & miễn giảm</Link> },
+              { key: '/finance/reconciliation', label: <Link href="/finance/reconciliation">Đối soát ngân hàng</Link> },
+              { key: '/finance/accounting', label: <Link href="/finance/accounting">Đồng bộ MISA</Link> },
+              { key: '/finance/settings', label: <Link href="/finance/settings">Tài khoản nhận tiền</Link> },
+            ],
+          },
+          {
+            key: 'store',
+            icon: <ShopOutlined />,
+            label: 'Cấp phát',
+            children: [
+              { key: '/store/items', label: <Link href="/store/items">Hàng hóa & tồn kho</Link> },
+              { key: '/store/orders', label: <Link href="/store/orders">Phiếu cấp phát</Link> },
+            ],
+          },
+        ]
+      : []),
+    { key: '/canteen', icon: <CoffeeOutlined />, label: <Link href="/canteen">Bán trú</Link> },
+    {
+      key: 'library',
+      icon: <BookOutlined />,
+      label: 'Thư viện',
+      children: [
+        { key: '/library/books', label: <Link href="/library/books">Đầu sách</Link> },
+        { key: '/library/circulation', label: <Link href="/library/circulation">Mượn trả</Link> },
+      ],
+    },
+    ...(me.role !== 'TEACHER' ? [{ key: '/health', icon: <MedicineBoxOutlined />, label: <Link href="/health">Y tế học đường</Link> }] : []),
     ...(me.role === 'ADMIN' ? [{ key: '/settings', icon: <SettingOutlined />, label: <Link href="/settings">Thiết lập</Link> }] : []),
   ];
 
