@@ -3,7 +3,8 @@ import { AnswerKey, ChoiceOption, GradeItem, gradeAttempt, QuestionOptions, roun
 import { SeedContext } from './context';
 
 // Demo question bank (grade 6), one published quiz for 6A1 with graded attempts,
-// a school-wide contest and a draft mid-term exam.
+// a school-wide contest, a draft mid-term exam and an open practice test (no attempts)
+// that the demo student can start.
 
 type Spec = { subject: 'TOAN' | 'VAN' | 'ANH' | 'KHTN'; type: QuestionType; difficulty: number; content: string; options?: unknown; answer?: unknown; explanation?: string; tags: string[] };
 
@@ -275,6 +276,30 @@ export async function seedAssessments(prisma: PrismaClient, ctx: SeedContext) {
       classIds: [ctx.classes['6A1'], ctx.classes['6A2']],
       createdById: ctx.teacherUsers.GV002,
       questions: { create: van.map((s, sortOrder) => ({ questionId: byContent.get(s.content)!.id, points: s.type === 'ESSAY' ? (s.difficulty === 6 ? 4 : 2) : 1, sortOrder })) },
+    },
+  });
+
+  // ---- (4) practice for 6A1 and 6A2, one question of each auto-graded type, nobody has started it ----
+  const practiceSpecs = [toan[13], toan[14], toan[4], toan[6], toan[7], toan[9], toan[10], toan[12]];
+  await prisma.test.create({
+    data: {
+      schoolId,
+      subjectId: ctx.subjects.TOAN,
+      gradeLevel: 6,
+      kind: TestKind.PRACTICE,
+      title: 'Luyện tập – Ôn tập chương 1',
+      description: 'Bài luyện tập có đủ các dạng câu hỏi: trắc nghiệm, đúng/sai, điền chỗ trống, ghép đôi và sắp xếp. Em được làm tối đa 5 lần.',
+      status: TestStatus.PUBLISHED,
+      timeLimitMin: 20,
+      maxAttempts: 5,
+      shuffleQuestions: false,
+      shuffleOptions: true,
+      showResults: true,
+      passPercent: 50,
+      closeAt: new Date(now + 14 * DAY),
+      classIds: [ctx.classes['6A1'], ctx.classes['6A2']],
+      createdById: ctx.teacherUsers.GV001,
+      questions: { create: practiceSpecs.map((s, sortOrder) => ({ questionId: byContent.get(s.content)!.id, points: s.difficulty >= 3 ? 1.5 : 1, sortOrder })) },
     },
   });
 }
