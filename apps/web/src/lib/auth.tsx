@@ -3,23 +3,25 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { api, getToken, setToken } from './api';
 
-export type RoleName = 'ADMIN' | 'STAFF' | 'TEACHER' | 'PARENT' | 'DRIVER';
+export type RoleName = 'ADMIN' | 'STAFF' | 'TEACHER' | 'PARENT' | 'DRIVER' | 'STUDENT';
 
 export interface Me {
   id: string;
   email: string | null;
   phone: string | null;
+  username: string | null;
   fullName: string;
   role: RoleName;
   mustChangePassword: boolean;
   teacherId: string | null;
+  studentId: string | null;
   school: { id: string; name: string; code: string; timezone: string; lateAfter: string };
 }
 
 interface AuthState {
   me: Me | null;
   loading: boolean;
-  /** Signs in with an email (staff) or a phone number (parents, drivers). */
+  /** Signs in with an email (staff), a phone number (parents, drivers) or a student code. */
   login: (identifier: string, password: string) => Promise<Me>;
   /** Reloads the profile, e.g. after a password change. */
   refresh: () => Promise<Me>;
@@ -45,7 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (identifier: string, password: string) => {
     const id = identifier.trim();
-    const body = id.includes('@') ? { email: id, password } : { phone: id, password };
+    const body = id.includes('@') ? { email: id, password } : /^[\d\s.+-]{9,}$/.test(id) ? { phone: id, password } : { username: id, password };
     const res = await api<{ accessToken: string }>('/auth/login', { method: 'POST', body });
     setToken(res.accessToken);
     const profile = await api<Me>('/auth/me');
@@ -74,8 +76,8 @@ export function useAuth() {
   return ctx;
 }
 
-/** Where each role lands after signing in: the parent and driver apps are separate from the school portal. */
-export const homeFor = (role: RoleName) => (role === 'PARENT' ? '/parent' : role === 'DRIVER' ? '/driver' : '/');
+/** Where each role lands after signing in: the parent, driver and student apps are separate from the school portal. */
+export const homeFor = (role: RoleName) => (role === 'PARENT' ? '/parent' : role === 'DRIVER' ? '/driver' : role === 'STUDENT' ? '/student' : '/');
 export const isPortalRole = (role: RoleName) => role === 'ADMIN' || role === 'STAFF' || role === 'TEACHER';
 
 export const canManage = (me: Me | null) => me?.role === 'ADMIN';

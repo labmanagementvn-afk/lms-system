@@ -60,3 +60,29 @@ export async function createParent(app: INestApplication, schoolId: string, stud
 }
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+let studentSeq = 0;
+/**
+ * Creates a student (enrolled in `classId` for the school's current year when given)
+ * with a STUDENT login and returns the student, the user and a token.
+ */
+export async function createStudent(app: INestApplication, schoolId: string, opts: { classId?: string; fullName?: string; code?: string } = {}) {
+  const code = opts.code ?? `HS${runId()}${++studentSeq}`;
+  const username = code.toLowerCase();
+  const user = await prisma.user.create({
+    data: { schoolId, username, fullName: opts.fullName ?? `Học sinh ${code}`, role: Role.STUDENT, passwordHash: await bcrypt.hash('Secret@123', 4) },
+  });
+  const student = await prisma.student.create({ data: { schoolId, code, fullName: opts.fullName ?? `Học sinh ${code}`, userId: user.id } });
+  if (opts.classId) {
+    const cls = await prisma.class.findUniqueOrThrow({ where: { id: opts.classId }, select: { academicYearId: true } });
+    await prisma.enrollment.create({ data: { classId: opts.classId, studentId: student.id, academicYearId: cls.academicYearId } });
+  }
+  const res = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ username, password: 'Secret@123' }).expect(200);
+  return { student, user, token: res.body.accessToken as string };
+}
+
+/** Creates a class in the school's current academic year (with a homeroom teacher when given). */
+export async function createClass(schoolId: string, name: string, gradeLevel = 6, homeroomTeacherId?: string) {
+  const year = await prisma.academicYear.findFirstOrThrow({ where: { schoolId, isCurrent: true } });
+  return prisma.class.create({ data: { schoolId, academicYearId: year.id, name, gradeLevel, homeroomTeacherId } });
+}

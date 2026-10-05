@@ -14,7 +14,7 @@ export interface MobileTab {
  * Phone-sized frame for the parent and driver apps: sticky title bar, scrolling
  * body and a bottom tab bar. The portal's sidebar layout is not used here.
  */
-export function MobileShell({ title, extra, tabs, children }: { title: ReactNode; extra?: ReactNode; tabs: MobileTab[]; children: ReactNode }) {
+export function MobileShell({ title, extra, tabs, children, maxWidth = 480 }: { title: ReactNode; extra?: ReactNode; tabs: MobileTab[]; children: ReactNode; maxWidth?: number }) {
   const pathname = usePathname();
   const active = tabs
     .map((t) => t.href)
@@ -23,7 +23,7 @@ export function MobileShell({ title, extra, tabs, children }: { title: ReactNode
 
   return (
     <div style={{ minHeight: '100vh', background: '#f3f4f6' }}>
-      <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ maxWidth, margin: '0 auto', minHeight: '100vh', background: '#fff', display: 'flex', flexDirection: 'column' }}>
         <header
           style={{
             position: 'sticky',
@@ -49,7 +49,7 @@ export function MobileShell({ title, extra, tabs, children }: { title: ReactNode
             left: 0,
             right: 0,
             margin: '0 auto',
-            maxWidth: 480,
+            maxWidth,
             background: '#fff',
             borderTop: '1px solid #e5e7eb',
             display: 'grid',

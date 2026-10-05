@@ -12,6 +12,11 @@ export class LoginDto {
   @IsString()
   phone?: string;
 
+  @ApiPropertyOptional({ example: 'hs2026001', description: 'Students sign in with their student code' })
+  @IsOptional()
+  @IsString()
+  username?: string;
+
   @ApiProperty({ example: 'Admin@123' })
   @IsString()
   @MinLength(6)

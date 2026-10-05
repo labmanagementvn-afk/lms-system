@@ -1,12 +1,14 @@
 'use client';
 
-import { CalendarOutlined, CoffeeOutlined, FormOutlined, LogoutOutlined, MedicineBoxOutlined, NotificationOutlined, RightOutlined, UserOutlined } from '@ant-design/icons';
+import { CalendarOutlined, CoffeeOutlined, FormOutlined, LogoutOutlined, MedicineBoxOutlined, NotificationOutlined, ProfileOutlined, RightOutlined, StarOutlined, UserOutlined } from '@ant-design/icons';
 import { Button, Card, List, Typography } from 'antd';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
 import { useParent } from '@/lib/parent';
 
 const ITEMS = [
+  { href: '/parent/grades', icon: <ProfileOutlined />, label: 'Sổ điểm & kết quả học tập' },
+  { href: '/parent/conduct', icon: <StarOutlined />, label: 'Rèn luyện (hạnh kiểm)' },
   { href: '/parent/attendance', icon: <CalendarOutlined />, label: 'Điểm danh & chuyên cần' },
   { href: '/parent/health', icon: <MedicineBoxOutlined />, label: 'Sổ sức khỏe' },
   { href: '/parent/meals', icon: <CoffeeOutlined />, label: 'Đăng ký bán trú' },

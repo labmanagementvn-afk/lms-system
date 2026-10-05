@@ -55,6 +55,26 @@ export async function api<T = any>(path: string, init: { method?: string; body?:
   return data as T;
 }
 
+/** Uploads one file as multipart/form-data (POST /uploads, /uploads/scorm) and returns the stored file. */
+export async function apiUpload<T = any>(path: string, file: File | Blob, fileName?: string): Promise<T> {
+  const form = new FormData();
+  form.append('file', file, fileName ?? (file instanceof File ? file.name : 'file'));
+  const token = getToken();
+  const res = await fetch(API_URL + path, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : undefined;
+  if (!res.ok) {
+    const msg = Array.isArray(data?.message) ? data.message.join(', ') : (data?.message ?? res.statusText);
+    throw new ApiError(res.status, msg, data);
+  }
+  return data as T;
+}
+
+/** URL of an uploaded file for <video>, <img>, <iframe> and download links; the token travels in the query string. */
+export const fileUrl = (id: string) => `${API_URL}/uploads/${id}?access_token=${encodeURIComponent(getToken() ?? '')}`;
+/** Launch page of an extracted SCORM package (public by unguessable id). */
+export const scormUrl = (id: string, launchPath: string) => `${API_URL}/uploads/scorm/${id}/${launchPath}`;
+
 /** SWR fetcher: key is [path, query?]. */
 export const fetcher = ([path, query]: [string, Record<string, unknown>?]) => api(path, { query });
 
