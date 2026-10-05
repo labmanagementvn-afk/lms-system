@@ -8,6 +8,7 @@ import { seedAnnouncements } from './seed/announcements';
 import { seedAssets } from './seed/assets';
 import { seedBus } from './seed/bus';
 import { SeedContext } from './seed/context';
+import { seedFinance } from './seed/finance';
 import { seedHomeroom } from './seed/homeroom';
 import { seedHr } from './seed/hr';
 import { seedParents } from './seed/parents';
@@ -225,7 +226,7 @@ async function main() {
   console.log('Seeded demo school.');
   console.log('  admin@demo.edu.vn / Admin@123, baove@demo.edu.vn / Staff@123, gv001@demo.edu.vn / Teacher@123');
   console.log(`  Gate device API key (shown once): ${key}`);
-  for (const seed of [seedParents, seedHomeroom, seedAnnouncements, seedBus, seedAdmissions, seedHr, seedAssets]) await seed(prisma, ctx);
+  for (const seed of [seedFinance, seedParents, seedHomeroom, seedAnnouncements, seedBus, seedAdmissions, seedHr, seedAssets]) await seed(prisma, ctx);
 }
 
 main()
