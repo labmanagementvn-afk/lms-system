@@ -22,6 +22,8 @@ enum Role {
   PARENT
   DRIVER
   STUDENT
+  // Phòng / Sở GD&ĐT officer: reads aggregated data of the schools of their district, no school of their own.
+  DISTRICT
 }
 
 enum Gender {
@@ -92,16 +94,26 @@ enum EventSource {
 }
 
 model School {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  name      String
-  address   String?
+  id         String   @id @default(cuid())
+  code       String   @unique
+  name       String
+  address    String?
   // IANA timezone used for "school day" boundaries and device local times.
-  timezone  String   @default("Asia/Ho_Chi_Minh")
+  timezone   String   @default("Asia/Ho_Chi_Minh")
   // Students whose first check-in is after this local time (HH:mm) are late.
-  lateAfter String   @default("07:15")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  lateAfter  String   @default("07:15")
+  // Phase 5: the Phòng / Sở GD&ĐT the school reports to, and its code in the MOET education database (CSDL ngành).
+  districtId String?
+  moetCode   String?
+  province   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  district    District?    @relation(fields: [districtId], references: [id])
+  dailyStats  DailyStat[]
+  alertRules  AlertRule[]
+  alertEvents AlertEvent[]
+  moetExports MoetExport[]
 
   users         User[]
   teachers      Teacher[]
@@ -176,7 +188,9 @@ model School {
 
 model User {
   id                 String   @id @default(cuid())
-  schoolId           String
+  // Null only for district officers (role DISTRICT), who belong to a District instead.
+  schoolId           String?
+  districtId         String?
   // Staff log in with email; parents and drivers with their phone number (digits only).
   email              String?  @unique
   phone              String?  @unique
@@ -190,7 +204,8 @@ model User {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  school        School                 @relation(fields: [schoolId], references: [id])
+  school        School?                @relation(fields: [schoolId], references: [id])
+  district      District?              @relation(fields: [districtId], references: [id])
   teacher       Teacher?
   guardians     Guardian[]
   notifications Notification[]
@@ -204,6 +219,7 @@ model User {
   posts         DiscussionPost[]
 
   @@index([schoolId])
+  @@index([districtId])
 }
 
 model Subject {
@@ -1147,6 +1163,7 @@ enum NotificationKind {
   COURSE_PUBLISHED
   TEST_ASSIGNED
   LIVE_CLASS
+  ALERT
 }
 
 enum AnnouncementStatus {
@@ -2467,4 +2484,183 @@ model TestAttempt {
 
   @@unique([testId, studentId, attemptNo])
   @@index([studentId])
+}
+
+// ============================================================================
+// Phase 5: district level, nightly statistics, alerts, audit log, MOET exchange
+// ============================================================================
+
+enum DistrictLevel {
+  // Phòng GD&ĐT (district / ward office)
+  PHONG
+  // Sở GD&ĐT (province department)
+  SO
+}
+
+enum AlertKind {
+  // Share of studying students present (on time or late) on the day, in percent.
+  ATTENDANCE_RATE_BELOW
+  // Share of present students who arrived late, in percent.
+  LATE_RATE_ABOVE
+  // Unpaid amount of invoices past their due date, in VND.
+  OVERDUE_FEES_ABOVE
+  // Health incidents recorded on the day.
+  HEALTH_INCIDENTS_ABOVE
+  // Students absent on every school day of the last N days (threshold = N days, minimum 2).
+  ABSENT_STREAK
+}
+
+enum MoetExportKind {
+  STUDENTS
+  TEACHERS
+  CLASSES
+  TERM_RESULTS
+}
+
+enum MoetExportStatus {
+  DONE
+  FAILED
+}
+
+/**
+ * Phòng / Sở GD&ĐT: groups schools for the district dashboards.
+ */
+model District {
+  id        String        @id @default(cuid())
+  code      String        @unique
+  name      String
+  level     DistrictLevel @default(PHONG)
+  province  String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  schools    School[]
+  users      User[]
+  alertRules AlertRule[]
+}
+
+/**
+ * One row per school and local day, computed by the nightly job (and refreshed during the day).
+ */
+model DailyStat {
+  id                String   @id @default(cuid())
+  schoolId          String
+  date              DateTime @db.Date
+  // Students with status STUDYING on the day the row was computed.
+  students          Int      @default(0)
+  // Gate-based attendance: students with any event, of which how many arrived after lateAfter.
+  present           Int      @default(0)
+  late              Int      @default(0)
+  absent            Int      @default(0)
+  // present / students × 100, one decimal.
+  attendanceRate    Decimal  @default(0) @db.Decimal(5, 1)
+  // Homeroom roll call: ABSENT + EXCUSED rows of the day.
+  homeroomAbsent    Int      @default(0)
+  invoicesIssued    Int      @default(0)
+  invoicesPaid      Int      @default(0)
+  // VND received on the day (payments) and unpaid past due at the end of the day.
+  revenue           BigInt   @default(0)
+  overdueAmount     BigInt   @default(0)
+  healthIncidents   Int      @default(0)
+  // Students with lesson progress, and attempts handed in, on the day.
+  lmsActiveStudents Int      @default(0)
+  testsSubmitted    Int      @default(0)
+  computedAt        DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@unique([schoolId, date])
+  @@index([date])
+}
+
+/**
+ * A threshold on a daily statistic; school rules belong to a school, district rules apply to every school of the district.
+ */
+model AlertRule {
+  id         String    @id @default(cuid())
+  schoolId   String?
+  districtId String?
+  kind       AlertKind
+  threshold  Decimal   @db.Decimal(14, 2)
+  name       String
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  school   School?      @relation(fields: [schoolId], references: [id])
+  district District?    @relation(fields: [districtId], references: [id])
+  events   AlertEvent[]
+
+  @@index([schoolId])
+  @@index([districtId])
+}
+
+/**
+ * A rule that fired for a school on a day; one event per rule, school and day.
+ */
+model AlertEvent {
+  id               String    @id @default(cuid())
+  ruleId           String
+  schoolId         String
+  date             DateTime  @db.Date
+  kind             AlertKind
+  value            Decimal   @db.Decimal(14, 2)
+  threshold        Decimal   @db.Decimal(14, 2)
+  message          String
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+  createdAt        DateTime  @default(now())
+
+  rule   AlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  school School    @relation(fields: [schoolId], references: [id])
+
+  @@unique([ruleId, schoolId, date])
+  @@index([schoolId, createdAt])
+}
+
+/**
+ * Every state-changing API call: who did what, where, with which result. Bodies are stored with secrets redacted.
+ */
+model AuditLog {
+  id         String   @id @default(cuid())
+  schoolId   String?
+  districtId String?
+  userId     String?
+  userRole   Role?
+  method     String
+  path       String
+  // Module name taken from the path ("finance", "students", ...).
+  area       String
+  statusCode Int
+  ip         String?
+  userAgent  String?
+  body       Json?
+  durationMs Int
+  createdAt  DateTime @default(now())
+
+  @@index([schoolId, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/**
+ * A file produced for the MOET education database (CSDL ngành GDĐT).
+ */
+model MoetExport {
+  id             String           @id @default(cuid())
+  schoolId       String
+  kind           MoetExportKind
+  academicYearId String?
+  semester       Int?
+  fileId         String?
+  fileName       String
+  rows           Int              @default(0)
+  status         MoetExportStatus @default(DONE)
+  error          String?
+  createdById    String?
+  createdAt      DateTime         @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, createdAt])
 }

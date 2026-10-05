@@ -5,6 +5,7 @@ import { App, Button, Checkbox, DatePicker, Form, Input, InputNumber, Popconfirm
 import dayjs from 'dayjs';
 import { useEffect } from 'react';
 import { PageHeader } from '@/components/PageHeader';
+import { SchoolTab } from '@/components/settings/SchoolTab';
 import { api } from '@/lib/api';
 import { useAcademicYears, usePeriods, useSubjects } from '@/lib/hooks';
 import { options, SESSION } from '@/lib/labels';
@@ -15,6 +16,7 @@ export default function SettingsPage() {
       <PageHeader title="Thiết lập" />
       <Tabs
         items={[
+          { key: 'school', label: 'Trường học', children: <SchoolTab /> },
           { key: 'years', label: 'Năm học', children: <Years /> },
           { key: 'subjects', label: 'Môn học', children: <Subjects /> },
           { key: 'periods', label: 'Khung giờ tiết học', children: <Periods /> },

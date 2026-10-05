@@ -37,7 +37,7 @@ export function AccountPanel({ onPasswordChanged }: { onPasswordChanged?: () => 
           <Descriptions.Item label="Vai trò">{ROLE[me.role]}</Descriptions.Item>
           {me.email && <Descriptions.Item label="Email">{me.email}</Descriptions.Item>}
           {me.phone && <Descriptions.Item label="Điện thoại">{me.phone}</Descriptions.Item>}
-          <Descriptions.Item label="Trường">{me.school.name}</Descriptions.Item>
+          <Descriptions.Item label={me.role === 'DISTRICT' ? 'Đơn vị' : 'Trường'}>{me.role === 'DISTRICT' ? me.district?.name : me.school.name}</Descriptions.Item>
         </Descriptions>
       </Card>
       <Card size="small" title="Đổi mật khẩu">

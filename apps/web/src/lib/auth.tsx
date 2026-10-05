@@ -3,7 +3,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { api, getToken, setToken } from './api';
 
-export type RoleName = 'ADMIN' | 'STAFF' | 'TEACHER' | 'PARENT' | 'DRIVER' | 'STUDENT';
+export type RoleName = 'ADMIN' | 'STAFF' | 'TEACHER' | 'PARENT' | 'DRIVER' | 'STUDENT' | 'DISTRICT';
 
 export interface Me {
   id: string;
@@ -15,8 +15,19 @@ export interface Me {
   mustChangePassword: boolean;
   teacherId: string | null;
   studentId: string | null;
+  /** District officers have no school; AuthProvider fills in a placeholder so every page can read school.timezone. */
   school: { id: string; name: string; code: string; timezone: string; lateAfter: string };
+  district: { id: string; code: string; name: string; level: 'PHONG' | 'SO'; province: string | null } | null;
 }
+
+/** Profile as the API returns it: school is null for district officers. */
+type RawMe = Omit<Me, 'school'> & { school: Me['school'] | null };
+
+const normalize = (m: RawMe): Me => ({
+  ...m,
+  district: m.district ?? null,
+  school: m.school ?? { id: '', code: m.district?.code ?? '', name: m.district?.name ?? '', timezone: 'Asia/Ho_Chi_Minh', lateAfter: '07:15' },
+});
 
 interface AuthState {
   me: Me | null;
@@ -39,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    api<Me>('/auth/me')
-      .then(setMe)
+    api<RawMe>('/auth/me')
+      .then((m) => setMe(normalize(m)))
       .catch(() => setToken(null))
       .finally(() => setLoading(false));
   }, []);
@@ -50,13 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const body = id.includes('@') ? { email: id, password } : /^[\d\s.+-]{9,}$/.test(id) ? { phone: id, password } : { username: id, password };
     const res = await api<{ accessToken: string }>('/auth/login', { method: 'POST', body });
     setToken(res.accessToken);
-    const profile = await api<Me>('/auth/me');
+    const profile = normalize(await api<RawMe>('/auth/me'));
     setMe(profile);
     return profile;
   }, []);
 
   const refresh = useCallback(async () => {
-    const profile = await api<Me>('/auth/me');
+    const profile = normalize(await api<RawMe>('/auth/me'));
     setMe(profile);
     return profile;
   }, []);
@@ -76,8 +87,8 @@ export function useAuth() {
   return ctx;
 }
 
-/** Where each role lands after signing in: the parent, driver and student apps are separate from the school portal. */
-export const homeFor = (role: RoleName) => (role === 'PARENT' ? '/parent' : role === 'DRIVER' ? '/driver' : role === 'STUDENT' ? '/student' : '/');
+/** Where each role lands after signing in: the parent, driver, student and district apps are separate from the school portal. */
+export const homeFor = (role: RoleName) => (role === 'PARENT' ? '/parent' : role === 'DRIVER' ? '/driver' : role === 'STUDENT' ? '/student' : role === 'DISTRICT' ? '/district' : '/');
 export const isPortalRole = (role: RoleName) => role === 'ADMIN' || role === 'STAFF' || role === 'TEACHER';
 
 export const canManage = (me: Me | null) => me?.role === 'ADMIN';

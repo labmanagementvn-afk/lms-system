@@ -1,5 +1,6 @@
 import { Controller, Get, Header, HttpCode, Logger, Post, Query, Req } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { Public } from '../common/decorators';
 import { tzOffsetMinutes } from '../common/time';
@@ -12,6 +13,8 @@ import { IngestService } from './ingest.service';
  * setting at this API's host and port; it is served outside the /api prefix
  * at /iclock/*. Devices are identified by serial number (register it first).
  */
+// Terminals push every scan from one address: never rate-limited.
+@SkipThrottle()
 @ApiExcludeController()
 @Public()
 @Controller('iclock')

@@ -15,6 +15,8 @@ export async function createApp(): Promise<INestApplication> {
   process.env.NOTIFY_DISPATCH_INTERVAL_MS = '0';
   process.env.ANNOUNCE_SCHEDULER_MS = '0';
   process.env.BUS_TRIP_SCHEDULER_MS = '0';
+  process.env.STATS_SCHEDULER_MS = '0';
+  process.env.RATE_LIMIT_PER_MIN = '0';
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
   configureApp(app);
@@ -79,6 +81,26 @@ export async function createStudent(app: INestApplication, schoolId: string, opt
   }
   const res = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ username, password: 'Secret@123' }).expect(200);
   return { student, user, token: res.body.accessToken as string };
+}
+
+/** Creates a Phòng GD&ĐT with one officer account and returns the district and the officer's token. */
+export async function createDistrict(app: INestApplication, code: string) {
+  const district = await prisma.district.create({ data: { code, name: `Phòng GD&ĐT ${code}`, province: 'Hà Nội' } });
+  const email = `district-${code}@test.vn`.toLowerCase();
+  const user = await prisma.user.create({ data: { districtId: district.id, email, fullName: 'Chuyên viên PGD', role: Role.DISTRICT, passwordHash: await bcrypt.hash('Secret@123', 4) } });
+  const res = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ email, password: 'Secret@123' }).expect(200);
+  return { district, user, token: res.body.accessToken as string, login: res.body };
+}
+
+/** Polls `check` until it returns a truthy value (audit rows are written after the response is sent). */
+export async function waitFor<T>(check: () => Promise<T | null | undefined | false>, timeoutMs = 3000): Promise<T> {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const v = await check();
+    if (v) return v as T;
+    if (Date.now() > until) throw new Error('waitFor: timed out');
+    await new Promise((r) => setTimeout(r, 100));
+  }
 }
 
 /** Creates a class in the school's current academic year (with a homeroom teacher when given). */

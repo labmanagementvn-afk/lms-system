@@ -10,6 +10,7 @@ import { seedAssets } from './seed/assets';
 import { seedBus } from './seed/bus';
 import { seedConduct } from './seed/conduct';
 import { SeedContext } from './seed/context';
+import { seedDistrict } from './seed/district';
 import { seedFinance } from './seed/finance';
 import { seedGrades } from './seed/grades';
 import { seedHomeroom } from './seed/homeroom';
@@ -234,6 +235,8 @@ async function main() {
   // Phase 3 then phase 4 seeders; each one is a file under prisma/seed.
   for (const seed of [seedFinance, seedParents, seedStudentAccounts, seedHomeroom, seedAnnouncements, seedBus, seedAdmissions, seedHr, seedAssets]) await seed(prisma, ctx);
   for (const seed of [seedConduct, seedGrades, seedAssessments, seedLms]) await seed(prisma, ctx);
+  // Phase 5: the district, a second school, statistics and alerts.
+  await seedDistrict(prisma, ctx);
 }
 
 main()

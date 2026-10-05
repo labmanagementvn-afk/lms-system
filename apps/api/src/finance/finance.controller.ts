@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { AuthUser } from '../common/auth-user';
@@ -217,6 +218,8 @@ export class FinanceController {
   }
 }
 
+// Provider webhooks come from a few addresses in bursts: never rate-limited.
+@SkipThrottle()
 @ApiTags('finance')
 @Controller('payments/webhooks')
 export class PaymentWebhookController {

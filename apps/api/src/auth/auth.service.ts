@@ -6,7 +6,7 @@ import { normalizePhone } from '../common/phone';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './auth.dto';
 
-const userInclude = { school: true, teacher: { select: { id: true } }, student: { select: { id: true } } } satisfies Prisma.UserInclude;
+const userInclude = { school: true, district: true, teacher: { select: { id: true } }, student: { select: { id: true } } } satisfies Prisma.UserInclude;
 
 @Injectable()
 export class AuthService {
@@ -34,6 +34,7 @@ export class AuthService {
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
       schoolId: user.schoolId,
+      districtId: user.districtId,
       role: user.role,
       email: user.email,
     });
@@ -63,7 +64,8 @@ export class AuthService {
       mustChangePassword: user.mustChangePassword,
       teacherId: user.teacher?.id ?? null,
       studentId: user.student?.id ?? null,
-      school: { id: user.school.id, name: user.school.name, code: user.school.code, timezone: user.school.timezone, lateAfter: user.school.lateAfter },
+      school: user.school ? { id: user.school.id, name: user.school.name, code: user.school.code, timezone: user.school.timezone, lateAfter: user.school.lateAfter } : null,
+      district: user.district ? { id: user.district.id, code: user.district.code, name: user.district.name, level: user.district.level, province: user.district.province } : null,
     };
   }
 }

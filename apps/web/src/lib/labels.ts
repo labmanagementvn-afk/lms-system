@@ -1,6 +1,6 @@
 // Vietnamese labels for API enums.
 
-export const ROLE: Record<string, string> = { ADMIN: 'Quản trị', STAFF: 'Nhân viên', TEACHER: 'Giáo viên', PARENT: 'Phụ huynh', DRIVER: 'Lái xe', STUDENT: 'Học sinh' };
+export const ROLE: Record<string, string> = { ADMIN: 'Quản trị', STAFF: 'Nhân viên', TEACHER: 'Giáo viên', PARENT: 'Phụ huynh', DRIVER: 'Lái xe', STUDENT: 'Học sinh', DISTRICT: 'Phòng/Sở GD&ĐT' };
 export const GENDER: Record<string, string> = { MALE: 'Nam', FEMALE: 'Nữ', OTHER: 'Khác' };
 export const TEACHER_STATUS: Record<string, string> = { ACTIVE: 'Đang công tác', ON_LEAVE: 'Tạm nghỉ', RESIGNED: 'Đã nghỉ việc' };
 export const STUDENT_STATUS: Record<string, string> = {
@@ -261,3 +261,59 @@ export const vnd = (n: number | null | undefined) => `${(n ?? 0).toLocaleString(
 
 export const options = (map: Record<string | number, string>) =>
   Object.entries(map).map(([value, label]) => ({ value: isNaN(Number(value)) ? value : Number(value), label }));
+
+// ---- Phase 5: district, statistics, alerts, MOET exchange, audit ----
+export const DISTRICT_LEVEL: Record<string, string> = { PHONG: 'Phòng GD&ĐT', SO: 'Sở GD&ĐT' };
+export const ALERT_KIND: Record<string, { label: string; unit: string; hint: string }> = {
+  ATTENDANCE_RATE_BELOW: { label: 'Chuyên cần thấp hơn', unit: '%', hint: 'Tỷ lệ học sinh có mặt trong ngày thấp hơn ngưỡng' },
+  LATE_RATE_ABOVE: { label: 'Đi muộn vượt', unit: '%', hint: 'Tỷ lệ học sinh vào trường sau giờ quy định vượt ngưỡng' },
+  OVERDUE_FEES_ABOVE: { label: 'Công nợ quá hạn vượt', unit: '₫', hint: 'Tổng tiền chưa thu của các khoản đã quá hạn vượt ngưỡng' },
+  HEALTH_INCIDENTS_ABOVE: { label: 'Sự cố y tế vượt', unit: 'sự cố/ngày', hint: 'Số sự cố y tế ghi nhận trong ngày vượt ngưỡng' },
+  ABSENT_STREAK: { label: 'Vắng liên tiếp', unit: 'ngày học', hint: 'Có học sinh vắng đủ số ngày học liên tiếp (không tính Chủ nhật)' },
+};
+export const MOET_EXPORT_KIND: Record<string, { label: string; hint: string }> = {
+  STUDENTS: { label: 'Danh sách học sinh', hint: 'Mã, họ tên, ngày sinh, giới tính, lớp, trạng thái, người giám hộ' },
+  TEACHERS: { label: 'Danh sách giáo viên', hint: 'Mã, họ tên, ngày sinh, liên hệ, trạng thái, môn giảng dạy' },
+  CLASSES: { label: 'Danh sách lớp', hint: 'Lớp, khối, phòng, giáo viên chủ nhiệm, sĩ số của năm học' },
+  TERM_RESULTS: { label: 'Kết quả học kỳ', hint: 'Xếp loại học tập, rèn luyện, danh hiệu, lên lớp và điểm trung bình các môn' },
+};
+export const MOET_EXPORT_STATUS: Record<string, { label: string; color: string }> = { DONE: { label: 'Hoàn tất', color: 'green' }, FAILED: { label: 'Lỗi', color: 'red' } };
+export const HTTP_METHOD: Record<string, { label: string; color: string }> = {
+  POST: { label: 'Tạo', color: 'green' },
+  PUT: { label: 'Ghi', color: 'blue' },
+  PATCH: { label: 'Sửa', color: 'gold' },
+  DELETE: { label: 'Xóa', color: 'red' },
+};
+export const AREA: Record<string, string> = {
+  auth: 'Đăng nhập',
+  teachers: 'Giáo viên',
+  students: 'Học sinh',
+  classes: 'Lớp học',
+  subjects: 'Môn học',
+  'academic-years': 'Năm học',
+  schedules: 'Thời khóa biểu',
+  attendance: 'Điểm danh',
+  homeroom: 'Chủ nhiệm',
+  finance: 'Học phí',
+  store: 'Cấp phát',
+  canteen: 'Bán trú',
+  library: 'Thư viện',
+  health: 'Y tế',
+  notifications: 'Thông báo',
+  announcements: 'Thông báo & sự kiện',
+  parents: 'Phụ huynh',
+  bus: 'Xe đưa đón',
+  admissions: 'Tuyển sinh',
+  hr: 'Nhân sự',
+  assets: 'Tài sản',
+  grades: 'Sổ điểm',
+  conduct: 'Rèn luyện',
+  lms: 'E-learning',
+  uploads: 'Tệp tin',
+  stats: 'Thống kê',
+  alerts: 'Cảnh báo',
+  school: 'Thiết lập trường',
+  moet: 'CSDL ngành',
+  district: 'Phòng/Sở',
+  audit: 'Nhật ký',
+};

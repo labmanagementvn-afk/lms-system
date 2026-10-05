@@ -53,6 +53,16 @@ export class UploadsService {
     });
   }
 
+  /** Stores a file the server produced itself (an export) and records it like an upload. */
+  async storeBuffer(schoolId: string, userId: string | null, name: string, mimeType: string, data: Buffer) {
+    const id = randomUUID();
+    const ext = extname(name).slice(1).toLowerCase();
+    const rel = join('files', SAFE_EXT.test(ext) ? `${id}.${ext}` : id);
+    await fs.mkdir(join(uploadDir(), 'files'), { recursive: true });
+    await fs.writeFile(join(uploadDir(), rel), data);
+    return this.prisma.storedFile.create({ data: { schoolId, uploadedById: userId, name, mimeType, size: data.length, path: rel } });
+  }
+
   /** Unpacks a SCORM zip next to the other uploads and remembers its launch page. */
   async storeScorm(schoolId: string, userId: string | null, file: UploadedFile) {
     let zip: AdmZip;
