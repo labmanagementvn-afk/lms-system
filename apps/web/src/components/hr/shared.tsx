@@ -47,22 +47,26 @@ export function MoneyInput(props: InputNumberProps<number>) {
   );
 }
 
-/** Employee picker with server-side search by name or code. */
+/** Employee picker with server-side search by name or code; `initial` keeps the current choice visible before it is searched for. */
 export function EmployeeSelect({
   value,
   onChange,
   style,
   placeholder,
   disabled,
+  initial,
 }: {
   value?: string;
   onChange?: (id?: string) => void;
   style?: CSSProperties;
   placeholder?: string;
   disabled?: boolean;
+  initial?: { value: string; label: string };
 }) {
   const [q, setQ] = useState('');
   const { data, isLoading } = useSWR<{ items: any[] }>(['/hr/employees', { q, pageSize: 20 }]);
+  const opts = data?.items.map((e) => ({ value: e.id, label: employeeLabel(e) })) ?? [];
+  if (initial && !opts.some((o) => o.value === initial.value)) opts.unshift(initial);
   return (
     <Select
       showSearch
@@ -75,7 +79,7 @@ export function EmployeeSelect({
       disabled={disabled}
       placeholder={placeholder ?? 'Tìm nhân viên theo tên hoặc mã'}
       style={style}
-      options={data?.items.map((e) => ({ value: e.id, label: employeeLabel(e) }))}
+      options={opts}
     />
   );
 }
