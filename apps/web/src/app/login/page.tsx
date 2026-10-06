@@ -32,12 +32,12 @@ export default function LoginPage() {
           Đăng nhập
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ textAlign: 'center' }}>
-          Cán bộ, giáo viên dùng email; phụ huynh và lái xe dùng số điện thoại
+          Cán bộ, giáo viên dùng email; phụ huynh và lái xe dùng số điện thoại; học sinh dùng mã học sinh
         </Typography.Paragraph>
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
         <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
-          <Form.Item name="identifier" label="Email hoặc số điện thoại" rules={[{ required: true, message: 'Nhập email hoặc số điện thoại' }]}>
-            <Input prefix={<UserOutlined />} autoComplete="username" inputMode="email" />
+          <Form.Item name="identifier" label="Email, số điện thoại hoặc mã học sinh" rules={[{ required: true, message: 'Nhập email, số điện thoại hoặc mã học sinh' }]}>
+            <Input prefix={<UserOutlined />} autoComplete="username" />
           </Form.Item>
           <Form.Item name="password" label="Mật khẩu" rules={[{ required: true, message: 'Nhập mật khẩu' }]}>
             <Input.Password prefix={<LockOutlined />} autoComplete="current-password" />

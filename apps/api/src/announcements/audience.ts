@@ -33,8 +33,8 @@ export function teacherAudienceError(a: Audience, homeroomClassIds: string[]): s
 
 /**
  * Prisma filter for the users an audience reaches: active users of the school whose role is
- * listed, plus the parents of students enrolled in the listed classes or in the current year's
- * classes of the listed grades, plus those classes' homeroom teachers. Null for an empty audience.
+ * listed, plus the parents and the students themselves of the listed classes or of the current
+ * year's classes of the listed grades, plus those classes' homeroom teachers. Null for an empty audience.
  */
 export function recipientWhere(schoolId: string, academicYearId: string, a: Audience): Prisma.UserWhereInput | null {
   const or: Prisma.UserWhereInput[] = [];
@@ -45,6 +45,7 @@ export function recipientWhere(schoolId: string, academicYearId: string, a: Audi
   if (classes.length) {
     const klass: Prisma.ClassWhereInput = { schoolId, OR: classes };
     or.push({ role: Role.PARENT, guardians: { some: { student: { enrollments: { some: { class: klass } } } } } });
+    or.push({ role: Role.STUDENT, student: { enrollments: { some: { class: klass } } } });
     or.push({ role: Role.TEACHER, teacher: { homeroomClasses: { some: klass } } });
   }
   return or.length ? { schoolId, isActive: true, OR: or } : null;

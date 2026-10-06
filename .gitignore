@@ -9,3 +9,6 @@ coverage/
 .DS_Store
 next-env.d.ts
 *.tsbuildinfo
+
+# Phase 4 uploads (lesson files, SCORM packages)
+apps/api/uploads/

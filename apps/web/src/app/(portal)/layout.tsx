@@ -4,6 +4,9 @@ import {
   ApartmentOutlined,
   BookOutlined,
   CarOutlined,
+  ReadOutlined,
+  StarOutlined,
+  ProfileOutlined,
   CoffeeOutlined,
   DollarOutlined,
   FormOutlined,
@@ -58,7 +61,12 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
     { key: '/', icon: <DashboardOutlined />, label: <Link href="/">Tổng quan</Link> },
     { key: '/teachers', icon: <IdcardOutlined />, label: <Link href="/teachers">Giáo viên</Link> },
     { key: '/students', icon: <UserOutlined />, label: <Link href="/students">Học sinh</Link> },
-    ...(staff ? [{ key: '/parents', icon: <UsergroupAddOutlined />, label: <Link href="/parents">Tài khoản phụ huynh</Link> }] : []),
+    ...(staff
+      ? [
+          { key: '/parents', icon: <UsergroupAddOutlined />, label: <Link href="/parents">Tài khoản phụ huynh</Link> },
+          { key: '/students/accounts', icon: <IdcardOutlined />, label: <Link href="/students/accounts">Tài khoản học sinh</Link> },
+        ]
+      : []),
     { key: '/classes', icon: <ApartmentOutlined />, label: <Link href="/classes">Lớp học</Link> },
     { key: '/schedules', icon: <CalendarOutlined />, label: <Link href="/schedules">Thời khóa biểu</Link> },
     {
@@ -70,6 +78,29 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
         { key: '/attendance/logbook', label: <Link href="/attendance/logbook">Sổ đầu bài</Link> },
         { key: '/attendance', icon: <TeamOutlined />, label: <Link href="/attendance">Ra vào cổng</Link> },
         ...(staff ? [{ key: '/attendance/devices', icon: <ScanOutlined />, label: <Link href="/attendance/devices">Thiết bị & định danh</Link> }] : []),
+      ],
+    },
+    {
+      key: 'grades',
+      icon: <ProfileOutlined />,
+      label: 'Sổ điểm',
+      children: [
+        { key: '/grades', label: <Link href="/grades">Nhập điểm</Link> },
+        { key: '/grades/results', label: <Link href="/grades/results">Kết quả học tập</Link> },
+        ...(staff ? [{ key: '/grades/settings', label: <Link href="/grades/settings">Môn học & cách đánh giá</Link> }] : []),
+      ],
+    },
+    { key: '/conduct', icon: <StarOutlined />, label: <Link href="/conduct">Rèn luyện</Link> },
+    {
+      key: 'lms',
+      icon: <ReadOutlined />,
+      label: 'E-learning',
+      children: [
+        { key: '/lms/courses', label: <Link href="/lms/courses">Khóa học</Link> },
+        { key: '/lms/questions', label: <Link href="/lms/questions">Ngân hàng câu hỏi</Link> },
+        { key: '/lms/tests', label: <Link href="/lms/tests">Bài kiểm tra & cuộc thi</Link> },
+        { key: '/lms/live', label: <Link href="/lms/live">Lớp học trực tuyến</Link> },
+        { key: '/lms/reports', label: <Link href="/lms/reports">Báo cáo học tập</Link> },
       ],
     },
     { key: '/announcements', icon: <NotificationOutlined />, label: <Link href="/announcements">Thông báo & sự kiện</Link> },

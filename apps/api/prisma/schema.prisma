@@ -21,6 +21,7 @@ enum Role {
   TEACHER
   PARENT
   DRIVER
+  STUDENT
 }
 
 enum Gender {
@@ -156,6 +157,21 @@ model School {
   assets                Asset[]
   assetLoans            AssetLoan[]
   assetAudits           AssetAudit[]
+
+  subjectSettings    SubjectSetting[]
+  scores             Score[]
+  subjectResults     SubjectResult[]
+  termResults        TermResult[]
+  gradeLocks         GradeLock[]
+  conductCriteria    ConductCriterion[]
+  conductAssessments ConductAssessment[]
+  storedFiles        StoredFile[]
+  courses            Course[]
+  lessons            Lesson[]
+  discussionThreads  DiscussionThread[]
+  liveSessions       LiveSession[]
+  questions          Question[]
+  tests              Test[]
 }
 
 model User {
@@ -164,6 +180,8 @@ model User {
   // Staff log in with email; parents and drivers with their phone number (digits only).
   email              String?  @unique
   phone              String?  @unique
+  // Students log in with their student code (lower-case; a school code suffix is added on collision).
+  username           String?  @unique
   passwordHash       String
   fullName           String
   role               Role
@@ -180,6 +198,10 @@ model User {
   rsvps         AnnouncementResponse[]
   busStaff      BusStaff?
   employee      Employee?
+  student       Student?
+  storedFiles   StoredFile[]
+  threads       DiscussionThread[]
+  posts         DiscussionPost[]
 
   @@index([schoolId])
 }
@@ -194,6 +216,13 @@ model Subject {
   teachers   TeacherSubject[]
   timetable  TimetableEntry[]
   lessonLogs LessonLog[]
+
+  settings       SubjectSetting[]
+  scores         Score[]
+  subjectResults SubjectResult[]
+  courses        Course[]
+  questions      Question[]
+  tests          Test[]
 
   @@unique([schoolId, code])
 }
@@ -222,6 +251,8 @@ model Teacher {
   loans           Loan[]
   lessonLogs      LessonLog[]
   employee        Employee?
+  scores          Score[]
+  courses         Course[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -246,10 +277,13 @@ model Student {
   dateOfBirth DateTime?     @db.Date
   address     String?
   status      StudentStatus @default(STUDYING)
+  // Student login account (phase 4).
+  userId      String?       @unique
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
   school      School               @relation(fields: [schoolId], references: [id])
+  user        User?                @relation(fields: [userId], references: [id])
   guardians   Guardian[]
   enrollments Enrollment[]
   identities  AttendanceIdentity[]
@@ -273,6 +307,15 @@ model Student {
   boardingEvents       BoardingEvent[]
   application          AdmissionApplication?
   serviceRegistrations ServiceRegistration[]
+
+  scores             Score[]
+  subjectResults     SubjectResult[]
+  termResults        TermResult[]
+  conductAssessments ConductAssessment[]
+  courseEnrollments  CourseEnrollment[]
+  lessonProgress     LessonProgress[]
+  testAttempts       TestAttempt[]
+  liveAttendances    LiveAttendance[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -314,6 +357,13 @@ model AcademicYear {
   serviceRegistrations ServiceRegistration[]
   busAssignments       BusAssignment[]
 
+  scores             Score[]
+  subjectResults     SubjectResult[]
+  termResults        TermResult[]
+  gradeLocks         GradeLock[]
+  conductAssessments ConductAssessment[]
+  courses            Course[]
+
   @@unique([schoolId, name])
 }
 
@@ -335,6 +385,12 @@ model Class {
   homeroomAttendance HomeroomAttendance[]
   lessonLogs         LessonLog[]
   applications       AdmissionApplication[]
+
+  scores             Score[]
+  subjectResults     SubjectResult[]
+  termResults        TermResult[]
+  gradeLocks         GradeLock[]
+  conductAssessments ConductAssessment[]
 
   @@unique([academicYearId, name])
   @@index([schoolId])
@@ -1086,6 +1142,11 @@ enum NotificationKind {
   ANNOUNCEMENT
   EVENT
   SYSTEM
+  GRADE_UPDATED
+  CONDUCT_APPROVED
+  COURSE_PUBLISHED
+  TEST_ASSIGNED
+  LIVE_CLASS
 }
 
 enum AnnouncementStatus {
@@ -1843,4 +1904,567 @@ model AssetAuditItem {
   asset Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@unique([auditId, assetId])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: gradebook (Thông tư 22/2021), conduct scoring, student accounts, LMS
+// ---------------------------------------------------------------------------
+
+enum AssessmentType {
+  SCORE // đánh giá bằng điểm số
+  COMMENT // đánh giá bằng nhận xét (Đạt / Chưa đạt)
+}
+
+enum ScoreKind {
+  TX // đánh giá thường xuyên (hệ số 1)
+  GK // giữa kỳ (hệ số 2)
+  CK // cuối kỳ (hệ số 3)
+}
+
+enum ResultLevel {
+  TOT
+  KHA
+  DAT
+  CHUA_DAT
+}
+
+enum PromotionStatus {
+  PROMOTED // được lên lớp
+  RETEST // kiểm tra lại trong hè
+  RETAINED // ở lại lớp
+}
+
+/// How a subject is assessed at this school and how many regular marks a semester has.
+model SubjectSetting {
+  id             String         @id @default(cuid())
+  schoolId       String
+  subjectId      String
+  assessment     AssessmentType @default(SCORE)
+  // Number of ĐĐGtx per semester (TT22: 2 for <= 35 periods/year, 3 for <= 70, 4 above).
+  regularCount   Int            @default(3)
+  periodsPerYear Int?
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, subjectId])
+}
+
+/// One mark: a regular, mid-term or end-of-term score (or Đạt/Chưa đạt for comment subjects).
+model Score {
+  id             String    @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  classId        String
+  studentId      String
+  subjectId      String
+  kind           ScoreKind
+  index          Int       @default(1)
+  value          Decimal?  @db.Decimal(4, 1)
+  passed         Boolean?
+  note           String?
+  teacherId      String?
+  updatedAt      DateTime  @updatedAt
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  class        Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id])
+  teacher      Teacher?     @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, subjectId, academicYearId, semester, kind, index])
+  @@index([classId, subjectId, academicYearId, semester])
+}
+
+/// Computed subject average per semester (1, 2) or year (semester 0).
+model SubjectResult {
+  id             String   @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  classId        String
+  studentId      String
+  subjectId      String
+  average        Decimal? @db.Decimal(4, 1)
+  passed         Boolean?
+  comment        String?
+  updatedAt      DateTime @updatedAt
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  class        Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id])
+
+  @@unique([studentId, subjectId, academicYearId, semester])
+  @@index([classId, academicYearId, semester])
+}
+
+/// Semester / year outcome per student: academic level, conduct level, title, promotion.
+model TermResult {
+  id              String           @id @default(cuid())
+  schoolId        String
+  academicYearId  String
+  semester        Int
+  classId         String
+  studentId       String
+  academic        ResultLevel?
+  conduct         ResultLevel?
+  title           String?
+  promotion       PromotionStatus?
+  absentDays      Int              @default(0)
+  homeroomComment String?
+  updatedAt       DateTime         @updatedAt
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  class        Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, academicYearId, semester])
+  @@index([classId, academicYearId, semester])
+}
+
+/// Marks of a class are frozen for the semester once leadership locks them.
+model GradeLock {
+  id             String   @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  classId        String
+  lockedAt       DateTime @default(now())
+  lockedById     String
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  class        Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, semester])
+}
+
+enum ConductStatus {
+  DRAFT
+  SELF_ASSESSED
+  REVIEWED
+  APPROVED
+}
+
+/// A school's conduct (rèn luyện) criteria; points add up to 100.
+model ConductCriterion {
+  id        String  @id @default(cuid())
+  schoolId  String
+  code      String
+  name      String
+  maxPoints Int
+  groupName String?
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  school School                  @relation(fields: [schoolId], references: [id])
+  items  ConductAssessmentItem[]
+
+  @@unique([schoolId, code])
+}
+
+/// Conduct scoring per student and semester (month 0 = whole semester).
+model ConductAssessment {
+  id             String        @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  month          Int           @default(0)
+  classId        String
+  studentId      String
+  status         ConductStatus @default(DRAFT)
+  selfTotal      Int?
+  teacherTotal   Int?
+  finalTotal     Int?
+  level          ResultLevel?
+  selfComment    String?
+  teacherComment String?
+  reviewedById   String?
+  approvedById   String?
+  approvedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  school       School                  @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear            @relation(fields: [academicYearId], references: [id])
+  class        Class                   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student      Student                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  items        ConductAssessmentItem[]
+
+  @@unique([studentId, academicYearId, semester, month])
+  @@index([classId, academicYearId, semester])
+}
+
+model ConductAssessmentItem {
+  id            String  @id @default(cuid())
+  assessmentId  String
+  criterionId   String
+  selfPoints    Int?
+  teacherPoints Int?
+  note          String?
+
+  assessment ConductAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  criterion  ConductCriterion  @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, criterionId])
+}
+
+/// An uploaded file (lesson material, course cover, SCORM package) stored under UPLOAD_DIR.
+model StoredFile {
+  id           String   @id @default(cuid())
+  schoolId     String
+  uploadedById String?
+  name         String
+  mimeType     String
+  size         Int
+  path         String
+  // SCORM packages: entry page inside the extracted package, e.g. "index_lms.html".
+  launchPath   String?
+  createdAt    DateTime @default(now())
+
+  school     School   @relation(fields: [schoolId], references: [id])
+  uploadedBy User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  lessons    Lesson[]
+  courses    Course[]
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum LessonType {
+  VIDEO
+  DOCUMENT
+  SCORM
+  H5P
+  TEXT
+  LINK
+  QUIZ
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum LiveStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+/// An online course owned by a teacher; classIds is the audience (empty = whole school).
+model Course {
+  id             String       @id @default(cuid())
+  schoolId       String
+  academicYearId String?
+  subjectId      String?
+  gradeLevel     Int?
+  teacherId      String
+  title          String
+  description    String?
+  coverFileId    String?
+  status         CourseStatus @default(DRAFT)
+  classIds       String[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  school       School             @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear?      @relation(fields: [academicYearId], references: [id])
+  subject      Subject?           @relation(fields: [subjectId], references: [id])
+  teacher      Teacher            @relation(fields: [teacherId], references: [id])
+  cover        StoredFile?        @relation(fields: [coverFileId], references: [id], onDelete: SetNull)
+  sections     CourseSection[]
+  lessons      Lesson[]
+  enrollments  CourseEnrollment[]
+  threads      DiscussionThread[]
+  liveSessions LiveSession[]
+  tests        Test[]
+
+  @@index([schoolId, status])
+}
+
+model CourseSection {
+  id        String @id @default(cuid())
+  courseId  String
+  title     String
+  sortOrder Int    @default(0)
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+
+  @@index([courseId])
+}
+
+/// One unit of content: video, document, SCORM/H5P package, text, link or quiz.
+model Lesson {
+  id          String     @id @default(cuid())
+  schoolId    String
+  courseId    String
+  sectionId   String?
+  title       String
+  type        LessonType
+  content     String?
+  fileId      String?
+  url         String?
+  testId      String?
+  durationMin Int?
+  sortOrder   Int        @default(0)
+  isRequired  Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  school   School             @relation(fields: [schoolId], references: [id])
+  course   Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section  CourseSection?     @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  file     StoredFile?        @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  test     Test?              @relation(fields: [testId], references: [id], onDelete: SetNull)
+  progress LessonProgress[]
+  threads  DiscussionThread[]
+
+  @@index([courseId])
+}
+
+model CourseEnrollment {
+  id          String    @id @default(cuid())
+  courseId    String
+  studentId   String
+  enrolledAt  DateTime  @default(now())
+  completedAt DateTime?
+  progressPct Int       @default(0)
+
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+  @@index([studentId])
+}
+
+model LessonProgress {
+  id           String         @id @default(cuid())
+  lessonId     String
+  studentId    String
+  status       ProgressStatus @default(IN_PROGRESS)
+  secondsSpent Int            @default(0)
+  // SCORM 1.2 CMI data model as the package left it.
+  scormData    Json?
+  lastAt       DateTime       @default(now())
+  completedAt  DateTime?
+
+  lesson  Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([lessonId, studentId])
+  @@index([studentId])
+}
+
+model DiscussionThread {
+  id        String   @id @default(cuid())
+  schoolId  String
+  courseId  String
+  lessonId  String?
+  authorId  String
+  title     String
+  body      String
+  isPinned  Boolean  @default(false)
+  isLocked  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school School           @relation(fields: [schoolId], references: [id])
+  course Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson Lesson?          @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  author User             @relation(fields: [authorId], references: [id])
+  posts  DiscussionPost[]
+
+  @@index([courseId, createdAt])
+}
+
+model DiscussionPost {
+  id        String   @id @default(cuid())
+  threadId  String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  thread DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author User             @relation(fields: [authorId], references: [id])
+
+  @@index([threadId, createdAt])
+}
+
+/// A scheduled live class; the room is a Jitsi Meet room name (no account needed).
+model LiveSession {
+  id          String     @id @default(cuid())
+  schoolId    String
+  courseId    String
+  title       String
+  startsAt    DateTime
+  durationMin Int        @default(45)
+  roomName    String     @unique
+  provider    String     @default("jitsi")
+  status      LiveStatus @default(SCHEDULED)
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdById String
+  createdAt   DateTime   @default(now())
+
+  school      School           @relation(fields: [schoolId], references: [id])
+  course      Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  attendances LiveAttendance[]
+
+  @@index([schoolId, startsAt])
+}
+
+model LiveAttendance {
+  id        String    @id @default(cuid())
+  sessionId String
+  studentId String
+  joinedAt  DateTime  @default(now())
+  leftAt    DateTime?
+
+  session LiveSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  FILL_BLANK
+  SHORT_ANSWER
+  NUMERIC
+  MATCHING
+  ORDERING
+  ESSAY
+}
+
+enum TestKind {
+  PRACTICE
+  QUIZ
+  EXAM
+  CONTEST
+}
+
+enum TestStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+/// Question bank: 9 types, difficulty 1 (nhận biết) to 6 (sáng tạo).
+model Question {
+  id          String       @id @default(cuid())
+  schoolId    String
+  subjectId   String?
+  gradeLevel  Int?
+  type        QuestionType
+  difficulty  Int          @default(1)
+  content     String
+  options     Json?
+  answer      Json?
+  explanation String?
+  tags        String[]
+  createdById String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  school        School         @relation(fields: [schoolId], references: [id])
+  subject       Subject?       @relation(fields: [subjectId], references: [id])
+  testQuestions TestQuestion[]
+
+  @@index([schoolId, subjectId, gradeLevel])
+}
+
+/// A quiz inside a course, a standalone exam for classes, or a school-wide contest.
+model Test {
+  id               String     @id @default(cuid())
+  schoolId         String
+  courseId         String?
+  subjectId        String?
+  gradeLevel       Int?
+  kind             TestKind   @default(QUIZ)
+  title            String
+  description      String?
+  status           TestStatus @default(DRAFT)
+  timeLimitMin     Int?
+  maxAttempts      Int        @default(1)
+  shuffleQuestions Boolean    @default(false)
+  shuffleOptions   Boolean    @default(false)
+  showResults      Boolean    @default(true)
+  passPercent      Int?
+  openAt           DateTime?
+  closeAt          DateTime?
+  classIds         String[]
+  createdById      String
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  school    School         @relation(fields: [schoolId], references: [id])
+  course    Course?        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  subject   Subject?       @relation(fields: [subjectId], references: [id])
+  questions TestQuestion[]
+  attempts  TestAttempt[]
+  lessons   Lesson[]
+
+  @@index([schoolId, kind, status])
+}
+
+model TestQuestion {
+  id         String  @id @default(cuid())
+  testId     String
+  questionId String
+  sortOrder  Int     @default(0)
+  points     Decimal @default(1) @db.Decimal(5, 2)
+
+  test     Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, questionId])
+}
+
+model TestAttempt {
+  id            String        @id @default(cuid())
+  testId        String
+  studentId     String
+  attemptNo     Int           @default(1)
+  status        AttemptStatus @default(IN_PROGRESS)
+  startedAt     DateTime      @default(now())
+  submittedAt   DateTime?
+  // Question ids in the order shown to the student (after shuffling).
+  questionOrder String[]
+  // { [questionId]: answer } as submitted.
+  answers       Json?
+  // { [questionId]: { points, max, correct, manual? } } after grading.
+  grading       Json?
+  score         Decimal?      @db.Decimal(6, 2)
+  maxScore      Decimal       @default(0) @db.Decimal(6, 2)
+  needsGrading  Boolean       @default(false)
+  gradedById    String?
+  gradedAt      DateTime?
+  durationSec   Int?
+
+  test    Test    @relation(fields: [testId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, studentId, attemptNo])
+  @@index([studentId])
 }

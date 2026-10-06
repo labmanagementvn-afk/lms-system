@@ -5,13 +5,18 @@ import * as bcrypt from 'bcryptjs';
 import { generateDeviceKey } from '../src/attendance/device-keys';
 import { seedAdmissions } from './seed/admissions';
 import { seedAnnouncements } from './seed/announcements';
+import { seedAssessments } from './seed/assessments';
 import { seedAssets } from './seed/assets';
 import { seedBus } from './seed/bus';
+import { seedConduct } from './seed/conduct';
 import { SeedContext } from './seed/context';
 import { seedFinance } from './seed/finance';
+import { seedGrades } from './seed/grades';
 import { seedHomeroom } from './seed/homeroom';
 import { seedHr } from './seed/hr';
+import { seedLms } from './seed/lms';
 import { seedParents } from './seed/parents';
+import { seedStudentAccounts } from './seed/students';
 
 const prisma = new PrismaClient();
 
@@ -226,7 +231,9 @@ async function main() {
   console.log('Seeded demo school.');
   console.log('  admin@demo.edu.vn / Admin@123, baove@demo.edu.vn / Staff@123, gv001@demo.edu.vn / Teacher@123');
   console.log(`  Gate device API key (shown once): ${key}`);
-  for (const seed of [seedFinance, seedParents, seedHomeroom, seedAnnouncements, seedBus, seedAdmissions, seedHr, seedAssets]) await seed(prisma, ctx);
+  // Phase 3 then phase 4 seeders; each one is a file under prisma/seed.
+  for (const seed of [seedFinance, seedParents, seedStudentAccounts, seedHomeroom, seedAnnouncements, seedBus, seedAdmissions, seedHr, seedAssets]) await seed(prisma, ctx);
+  for (const seed of [seedConduct, seedGrades, seedAssessments, seedLms]) await seed(prisma, ctx);
 }
 
 main()

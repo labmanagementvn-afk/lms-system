@@ -189,7 +189,7 @@ export function AnnouncementForm({ open, initial, onClose, onSaved }: { open: bo
         <Space wrap align="start">
           <Form.Item
             name="classIds"
-            label={isTeacher ? 'Lớp chủ nhiệm' : 'Theo lớp (phụ huynh và GVCN)'}
+            label={isTeacher ? 'Lớp chủ nhiệm' : 'Theo lớp (phụ huynh, học sinh và GVCN)'}
             rules={isTeacher ? [{ required: true, message: 'Chọn lớp' }] : []}
           >
             <Select mode="multiple" style={{ width: 300 }} optionFilterProp="label" placeholder="Chọn lớp" options={classOptions} />

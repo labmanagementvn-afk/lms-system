@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AccountingModule } from './accounting/accounting.module';
 import { AdmissionsModule } from './admissions/admissions.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
+import { AssessmentsModule } from './assessments/assessments.module';
 import { AssetsModule } from './assets/assets.module';
 import { AcademicYearsModule } from './academic-years/academic-years';
 import { AttendanceModule } from './attendance/attendance.module';
@@ -10,11 +11,14 @@ import { AuthModule } from './auth/auth.module';
 import { BusModule } from './bus/bus.module';
 import { CanteenModule } from './canteen/canteen.module';
 import { ClassesModule } from './classes/classes.module';
+import { ConductModule } from './conduct/conduct.module';
 import { FinanceModule } from './finance/finance.module';
+import { GradesModule } from './grades/grades.module';
 import { HealthModule } from './health/health.module';
 import { HomeroomModule } from './homeroom/homeroom.module';
 import { HrModule } from './hr/hr.module';
 import { LibraryModule } from './library/library.module';
+import { LmsModule } from './lms/lms.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ParentsModule } from './parents/parents.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -23,6 +27,7 @@ import { StudentsModule } from './students/students.module';
 import { StoreModule } from './store/store.module';
 import { SubjectsModule } from './subjects/subjects';
 import { TeachersModule } from './teachers/teachers.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -51,6 +56,12 @@ import { TeachersModule } from './teachers/teachers.module';
     AdmissionsModule,
     HrModule,
     AssetsModule,
+    // Phase 4
+    UploadsModule,
+    GradesModule,
+    ConductModule,
+    LmsModule,
+    AssessmentsModule,
   ],
 })
 export class AppModule {}

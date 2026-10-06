@@ -44,11 +44,12 @@ describe('recipientWhere', () => {
     });
   });
 
-  it('reaches the parents and homeroom teachers of classes and grades', () => {
+  it('reaches the parents, students and homeroom teachers of classes and grades', () => {
     const where = recipientWhere('s1', 'y1', parseAudience({ classIds: ['c1'], gradeLevels: [6] }))!;
     const klass = { schoolId: 's1', OR: [{ id: { in: ['c1'] } }, { gradeLevel: { in: [6] }, academicYearId: 'y1' }] };
     expect(where.OR).toEqual([
       { role: Role.PARENT, guardians: { some: { student: { enrollments: { some: { class: klass } } } } } },
+      { role: Role.STUDENT, student: { enrollments: { some: { class: klass } } } },
       { role: Role.TEACHER, teacher: { homeroomClasses: { some: klass } } },
     ]);
   });

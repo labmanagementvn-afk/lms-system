@@ -4,6 +4,8 @@ K-12 school platform with a Vietnamese web portal.
 
 - **Phase 1**: teachers, students, classes, timetable and gate attendance (điểm danh ra vào trường with fingerprint / face / card terminals).
 - **Phase 2**: finance and student services: tuition with VietQR payments and MISA sync, store/issuance with inventory, canteen, library, school health.
+- **Phase 3**: parent and driver apps, notifications, homeroom attendance and logbook, announcements, school bus, admissions, HR, assets.
+- **Phase 4**: student accounts, gradebook (Thông tư 22) with transcripts, conduct scoring, e-learning (courses, question bank, tests, contests, live classes).
 
 | Part | Stack | Folder |
 |---|---|---|
@@ -31,7 +33,7 @@ cp .env.example .env.local
 pnpm dev                # http://localhost:3000
 ```
 
-Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên). Phase 3 adds a parent login (`0981000000 / Parent@123`, two children) and a driver login (`0912000001 / Driver@123`); the seed prints them.
+Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên). Phase 3 adds a parent login (`0981000000 / Parent@123`, two children) and a driver login (`0912000001 / Driver@123`); phase 4 a student login (`hs2026001 / Student@123`). The seed prints them.
 
 ## Features
 
@@ -63,7 +65,14 @@ Payment and accounting integrations run against **sandbox implementations**; no 
 - **Nhân sự**: employee records linked to teacher accounts, documents and contracts with expiry alerts, work history, leave requests with approval (employee is notified), self-service for staff and teachers.
 - **Tài sản**: categories, suppliers, assets with straight-line depreciation and book value, maintenance, lending, disposal and stocktakes with a missing-items report.
 
-Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT` and `DRIVER` only reach the parent and driver apps.
+### Phase 4
+
+- **Tài khoản học sinh**: one login per student (username = student code) created by the school with a one-time password sheet; a student app at `/student`.
+- **Sổ điểm (Thông tư 22)**: subjects assessed by score or by comment, regular / mid-term / end-of-term marks per semester, automatic averages, academic level, titles and promotion, class locks, CSV export, a printable học bạ; marks appear in the student and parent apps with an alert on each mid-term or end-of-term mark.
+- **Rèn luyện**: school-defined criteria, student self-assessment, homeroom review, leadership approval and the resulting level feeding the gradebook.
+- **E-learning**: courses with sections and lessons (video, document, SCORM, H5P, text, link, quiz), auto-enrolment by class, progress tracking, discussions, live classes on Jitsi Meet, learning reports; a question bank (9 types, 6 levels, CSV import/export), tests, exams and school-wide contests with auto-grading, manual essay grading, leaderboards and statistics. Uploads are stored on local disk (`UPLOAD_DIR`). See [docs/learning.md](docs/learning.md).
+
+Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT`, `DRIVER` and `STUDENT` only reach the parent, driver and student apps.
 
 ## Tests
 

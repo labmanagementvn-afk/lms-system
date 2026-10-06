@@ -1,6 +1,6 @@
 // Vietnamese labels for API enums.
 
-export const ROLE: Record<string, string> = { ADMIN: 'Quản trị', STAFF: 'Nhân viên', TEACHER: 'Giáo viên', PARENT: 'Phụ huynh', DRIVER: 'Lái xe' };
+export const ROLE: Record<string, string> = { ADMIN: 'Quản trị', STAFF: 'Nhân viên', TEACHER: 'Giáo viên', PARENT: 'Phụ huynh', DRIVER: 'Lái xe', STUDENT: 'Học sinh' };
 export const GENDER: Record<string, string> = { MALE: 'Nam', FEMALE: 'Nữ', OTHER: 'Khác' };
 export const TEACHER_STATUS: Record<string, string> = { ACTIVE: 'Đang công tác', ON_LEAVE: 'Tạm nghỉ', RESIGNED: 'Đã nghỉ việc' };
 export const STUDENT_STATUS: Record<string, string> = {
@@ -183,6 +183,77 @@ export const ASSET_STATUS: Record<string, { label: string; color: string }> = {
 export const AUDIT_STATUS: Record<string, { label: string; color: string }> = {
   OPEN: { label: 'Đang kiểm kê', color: 'blue' },
   CLOSED: { label: 'Đã chốt', color: 'green' },
+};
+
+// ---- Phase 4 ----
+
+export const ASSESSMENT_TYPE: Record<string, string> = { SCORE: 'Bằng điểm số', COMMENT: 'Bằng nhận xét' };
+export const SCORE_KIND: Record<string, string> = { TX: 'Thường xuyên', GK: 'Giữa kỳ', CK: 'Cuối kỳ' };
+export const SEMESTER: Record<number, string> = { 1: 'Học kỳ 1', 2: 'Học kỳ 2', 0: 'Cả năm' };
+export const RESULT_LEVEL: Record<string, { label: string; color: string }> = {
+  TOT: { label: 'Tốt', color: 'green' },
+  KHA: { label: 'Khá', color: 'blue' },
+  DAT: { label: 'Đạt', color: 'orange' },
+  CHUA_DAT: { label: 'Chưa đạt', color: 'red' },
+};
+export const PROMOTION_STATUS: Record<string, { label: string; color: string }> = {
+  PROMOTED: { label: 'Được lên lớp', color: 'green' },
+  RETEST: { label: 'Kiểm tra lại', color: 'orange' },
+  RETAINED: { label: 'Ở lại lớp', color: 'red' },
+};
+export const CONDUCT_STATUS: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: 'Chưa đánh giá', color: 'default' },
+  SELF_ASSESSED: { label: 'HS đã tự đánh giá', color: 'blue' },
+  REVIEWED: { label: 'GVCN đã đánh giá', color: 'orange' },
+  APPROVED: { label: 'Đã duyệt', color: 'green' },
+};
+export const COURSE_STATUS: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: 'Nháp', color: 'default' },
+  PUBLISHED: { label: 'Đang mở', color: 'green' },
+  ARCHIVED: { label: 'Đã lưu trữ', color: 'default' },
+};
+export const LESSON_TYPE: Record<string, string> = {
+  VIDEO: 'Video',
+  DOCUMENT: 'Tài liệu',
+  SCORM: 'Gói SCORM',
+  H5P: 'H5P',
+  TEXT: 'Bài đọc',
+  LINK: 'Liên kết',
+  QUIZ: 'Bài kiểm tra',
+};
+export const PROGRESS_STATUS: Record<string, { label: string; color: string }> = {
+  NOT_STARTED: { label: 'Chưa học', color: 'default' },
+  IN_PROGRESS: { label: 'Đang học', color: 'blue' },
+  COMPLETED: { label: 'Hoàn thành', color: 'green' },
+};
+export const LIVE_STATUS: Record<string, { label: string; color: string }> = {
+  SCHEDULED: { label: 'Sắp diễn ra', color: 'blue' },
+  LIVE: { label: 'Đang diễn ra', color: 'red' },
+  ENDED: { label: 'Đã kết thúc', color: 'default' },
+  CANCELLED: { label: 'Đã hủy', color: 'default' },
+};
+export const QUESTION_TYPE: Record<string, string> = {
+  SINGLE_CHOICE: 'Một lựa chọn',
+  MULTIPLE_CHOICE: 'Nhiều lựa chọn',
+  TRUE_FALSE: 'Đúng / Sai',
+  FILL_BLANK: 'Điền vào chỗ trống',
+  SHORT_ANSWER: 'Trả lời ngắn',
+  NUMERIC: 'Kết quả số',
+  MATCHING: 'Ghép đôi',
+  ORDERING: 'Sắp xếp',
+  ESSAY: 'Tự luận',
+};
+export const DIFFICULTY: Record<number, string> = { 1: 'Nhận biết', 2: 'Thông hiểu', 3: 'Vận dụng', 4: 'Vận dụng cao', 5: 'Phân tích', 6: 'Sáng tạo' };
+export const TEST_KIND: Record<string, string> = { PRACTICE: 'Luyện tập', QUIZ: 'Bài kiểm tra', EXAM: 'Bài thi', CONTEST: 'Cuộc thi' };
+export const TEST_STATUS: Record<string, { label: string; color: string }> = {
+  DRAFT: { label: 'Nháp', color: 'default' },
+  PUBLISHED: { label: 'Đã giao', color: 'green' },
+  CLOSED: { label: 'Đã đóng', color: 'default' },
+};
+export const ATTEMPT_STATUS: Record<string, { label: string; color: string }> = {
+  IN_PROGRESS: { label: 'Đang làm', color: 'blue' },
+  SUBMITTED: { label: 'Chờ chấm', color: 'orange' },
+  GRADED: { label: 'Đã chấm', color: 'green' },
 };
 
 /** 1500000 -> "1.500.000 ₫" */

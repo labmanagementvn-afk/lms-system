@@ -6,6 +6,8 @@ import { normalizePhone } from '../common/phone';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './auth.dto';
 
+const userInclude = { school: true, teacher: { select: { id: true } }, student: { select: { id: true } } } satisfies Prisma.UserInclude;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -20,11 +22,14 @@ export class AuthService {
       const phone = normalizePhone(dto.phone);
       if (!phone) throw new UnauthorizedException('Số điện thoại hoặc mật khẩu không đúng');
       where = { phone };
-    } else throw new BadRequestException('Nhập email hoặc số điện thoại');
+    } else if (dto.username) where = { username: dto.username.trim().toLowerCase() };
+    else throw new BadRequestException('Nhập email, số điện thoại hoặc mã học sinh');
 
-    const user = await this.prisma.user.findUnique({ where, include: { school: true, teacher: { select: { id: true } } } });
+    const user = await this.prisma.user.findUnique({ where, include: userInclude });
     if (!user || !user.isActive || !(await bcrypt.compare(dto.password, user.passwordHash))) {
-      throw new UnauthorizedException(dto.email ? 'Email hoặc mật khẩu không đúng' : 'Số điện thoại hoặc mật khẩu không đúng');
+      throw new UnauthorizedException(
+        dto.email ? 'Email hoặc mật khẩu không đúng' : dto.phone ? 'Số điện thoại hoặc mật khẩu không đúng' : 'Mã học sinh hoặc mật khẩu không đúng',
+      );
     }
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
@@ -36,10 +41,7 @@ export class AuthService {
   }
 
   async me(userId: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      include: { school: true, teacher: { select: { id: true } } },
-    });
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: userInclude });
     return this.present(user);
   }
 
@@ -50,15 +52,17 @@ export class AuthService {
     return { ok: true };
   }
 
-  private present(user: Prisma.UserGetPayload<{ include: { school: true; teacher: { select: { id: true } } } }>) {
+  private present(user: Prisma.UserGetPayload<{ include: typeof userInclude }>) {
     return {
       id: user.id,
       email: user.email,
       phone: user.phone,
+      username: user.username,
       fullName: user.fullName,
       role: user.role,
       mustChangePassword: user.mustChangePassword,
       teacherId: user.teacher?.id ?? null,
+      studentId: user.student?.id ?? null,
       school: { id: user.school.id, name: user.school.name, code: user.school.code, timezone: user.school.timezone, lateAfter: user.school.lateAfter },
     };
   }
