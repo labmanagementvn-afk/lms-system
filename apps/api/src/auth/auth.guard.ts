@@ -5,8 +5,8 @@ import { Role } from '@prisma/client';
 import { AuthUser } from '../common/auth-user';
 import { ALLOW_QUERY_TOKEN_KEY, IS_PUBLIC_KEY, ROLES_KEY } from '../common/decorators';
 
-// Routes without @Roles are school-portal routes: parents and drivers only reach
-// routes that name their role explicitly.
+// Routes without @Roles are school-portal routes: parents, drivers, students and
+// district officers only reach routes that name their role explicitly.
 const PORTAL_ROLES: Role[] = [Role.ADMIN, Role.STAFF, Role.TEACHER];
 
 /** Global guard: requires a valid bearer token unless the route is @Public, then checks @Roles. */
@@ -31,7 +31,7 @@ export class AuthGuard implements CanActivate {
     let user: AuthUser;
     try {
       const payload = await this.jwt.verifyAsync(token);
-      user = { userId: payload.sub, schoolId: payload.schoolId, role: payload.role, email: payload.email };
+      user = { userId: payload.sub, schoolId: payload.schoolId ?? '', districtId: payload.districtId ?? null, role: payload.role, email: payload.email };
     } catch {
       throw new UnauthorizedException();
     }

@@ -175,6 +175,9 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
             children: [
               { key: '/settings', label: <Link href="/settings">Trường & năm học</Link> },
               { key: '/notifications/settings', label: <Link href="/notifications/settings">Kênh thông báo</Link> },
+              { key: '/settings/alerts', label: <Link href="/settings/alerts">Cảnh báo</Link> },
+              { key: '/settings/moet', label: <Link href="/settings/moet">Dữ liệu CSDL ngành</Link> },
+              { key: '/settings/audit', label: <Link href="/settings/audit">Nhật ký hệ thống</Link> },
             ],
           },
         ]

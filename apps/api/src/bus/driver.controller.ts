@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { AuthUser } from '../common/auth-user';
 import { CurrentUser, Roles } from '../common/decorators';
@@ -37,6 +38,7 @@ export class DriverController {
     return this.trips.end(user, id);
   }
 
+  @SkipThrottle()
   @Post('trips/:id/location')
   @ApiOperation({ summary: 'GPS fix while the trip is running' })
   location(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: LocationDto) {

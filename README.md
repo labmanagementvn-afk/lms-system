@@ -6,6 +6,7 @@ K-12 school platform with a Vietnamese web portal.
 - **Phase 2**: finance and student services: tuition with VietQR payments and MISA sync, store/issuance with inventory, canteen, library, school health.
 - **Phase 3**: parent and driver apps, notifications, homeroom attendance and logbook, announcements, school bus, admissions, HR, assets.
 - **Phase 4**: student accounts, gradebook (Thông tư 22) with transcripts, conduct scoring, e-learning (courses, question bank, tests, contests, live classes).
+- **Phase 5**: district (Phòng/Sở GD&ĐT) accounts and dashboards, nightly statistics with alert rules, MOET education-database exchange files, audit log, API hardening.
 
 | Part | Stack | Folder |
 |---|---|---|
@@ -33,7 +34,7 @@ cp .env.example .env.local
 pnpm dev                # http://localhost:3000
 ```
 
-Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên). Phase 3 adds a parent login (`0981000000 / Parent@123`, two children) and a driver login (`0912000001 / Driver@123`); phase 4 a student login (`hs2026001 / Student@123`). The seed prints them.
+Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên). Phase 3 adds a parent login (`0981000000 / Parent@123`, two children) and a driver login (`0912000001 / Driver@123`); phase 4 a student login (`hs2026001 / Student@123`); phase 5 a district officer (`pgd@caugiay.edu.vn / District@123`) and a second school (`admin@demo2.edu.vn / Admin@123`). The seed prints them.
 
 ## Features
 
@@ -72,7 +73,16 @@ Payment and accounting integrations run against **sandbox implementations**; no 
 - **Rèn luyện**: school-defined criteria, student self-assessment, homeroom review, leadership approval and the resulting level feeding the gradebook.
 - **E-learning**: courses with sections and lessons (video, document, SCORM, H5P, text, link, quiz), auto-enrolment by class, progress tracking, discussions, live classes on Jitsi Meet, learning reports; a question bank (9 types, 6 levels, CSV import/export), tests, exams and school-wide contests with auto-grading, manual essay grading, leaderboards and statistics. Uploads are stored on local disk (`UPLOAD_DIR`). See [docs/learning.md](docs/learning.md).
 
-Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT`, `DRIVER` and `STUDENT` only reach the parent, driver and student apps.
+### Phase 5
+
+- **Cổng Phòng/Sở GD&ĐT** (`/district`): officers log in by email and see every school attached to their district: daily totals, a 14-day trend, one line per school (attendance, late, absent, overdue fees, open alerts), school detail pages, district-wide alert rules, the audit trail of all schools and officer account management. A school attaches itself in *Thiết lập › Trường học* with its MOET code.
+- **Thống kê ngày**: a scheduler computes one row per school and day (attendance from the gate, homeroom absences, invoices, revenue, overdue fees, health incidents, e-learning activity) and refreshes today's row through the day; the school dashboard shows 14-day charts.
+- **Cảnh báo**: threshold rules per school or per district (attendance below, late rate above, overdue fees above, health incidents above, absence streaks) evaluated nightly, one event per rule and day, notifying admins and district officers; events are acknowledged in the portal.
+- **Dữ liệu CSDL ngành**: exports in the ministry template (students, teachers, classes, term results) kept in a history with downloads, and a student-list import in the same template with a dry run.
+- **Nhật ký hệ thống**: every state-changing API call recorded with user, module, outcome and a redacted body; failed sign-ins included; retention via `AUDIT_RETENTION_DAYS`.
+- **Hardening**: security headers (helmet), per-IP rate limiting with a stricter login limit, a JSON body limit, `GET /healthz`. See [docs/platform.md](docs/platform.md).
+
+Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT`, `DRIVER` and `STUDENT` only reach the parent, driver and student apps; `DISTRICT` only reaches the district portal.
 
 ## Tests
 

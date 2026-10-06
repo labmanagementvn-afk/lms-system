@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Role } from '@prisma/client';
 import { AuthUser } from '../common/auth-user';
 import { CurrentUser, Public, Roles } from '../common/decorators';
@@ -32,6 +33,7 @@ export class AttendanceController {
   // ---- Terminal ingestion ----
 
   @Public()
+  @SkipThrottle()
   @Post('ingest')
   @HttpCode(200)
   @ApiOperation({
