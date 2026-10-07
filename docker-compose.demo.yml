@@ -1,0 +1,41 @@
+# Temporary public demo on your own machine:
+#   docker compose -f docker-compose.demo.yml up --build
+# then look for the https://<random>.trycloudflare.com line in the "tunnel" logs.
+# The link lasts until you stop the stack; a new run gives a new link.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lms
+    volumes:
+      - demo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 3s
+      retries: 20
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/lms?schema=public
+      JWT_SECRET: ${JWT_SECRET:-demo-only-change-me}
+      AUTH_RATE_LIMIT_PER_MIN: "60"
+    ports:
+      - "3000:3000"
+    volumes:
+      - demo-uploads:/app/apps/api/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://app:3000
+    depends_on:
+      - app
+
+volumes:
+  demo-pgdata:
+  demo-uploads:

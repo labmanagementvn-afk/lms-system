@@ -29,7 +29,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T = any>(path: string, init: { method?: string; body?: unknown; query?: Record<string, unknown> } = {}): Promise<T> {
-  const url = new URL(API_URL + path);
+  const url = new URL(API_URL + path, globalThis.location?.origin);
   for (const [k, v] of Object.entries(init.query ?? {})) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   }
