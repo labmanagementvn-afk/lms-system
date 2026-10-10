@@ -1,10 +1,10 @@
-import { AssessmentType, Prisma, PrismaClient, ScoreKind } from '@prisma/client';
-import { academicLevel, promotionFor, semesterAverage, semesterPassed, SubjectOutcome, titleFor, YEAR, yearAverage, yearPassed } from './tt22';
+import { AssessmentType, Prisma, PrismaClient, ResultLevel, ScoreKind } from '@prisma/client';
+import { academicLevel, promotionFor, retakeOutcome, semesterAverage, semesterPassed, SubjectOutcome, titleFor, YEAR, yearAverage, yearConduct, yearPassed } from './tt22';
 
 // Turns Score rows into SubjectResult and TermResult rows. Shared by the API
 // service and the demo seed, so it only needs a PrismaClient.
 
-export type Db = Pick<PrismaClient, 'subjectSetting' | 'enrollment' | 'score' | 'subjectResult' | 'termResult' | 'subjectExemption' | '$transaction'>;
+export type Db = Pick<PrismaClient, 'subjectSetting' | 'enrollment' | 'score' | 'subjectResult' | 'termResult' | 'subjectExemption' | 'subjectRetake' | 'summerTraining' | '$transaction'>;
 
 export interface SubjectSettingLike {
   assessment: AssessmentType;
@@ -106,11 +106,42 @@ export function exemptTerms(rows: { semester: number }[]): { hk1: boolean; hk2: 
   return { hk1, hk2, year: hk1 && hk2 };
 }
 
+export interface RetakeLike {
+  subjectId: string;
+  score: Prisma.Decimal | number | null;
+  passed: boolean | null;
+}
+
+/**
+ * The year outcomes of a student with each retaken subject's result in place of
+ * its year result (Điều 14 TT22). `complete` is false while a registered retake
+ * has no result yet; those subjects keep their year result.
+ */
+export function withRetakes(year: Map<string, SubjectOutcome>, retakes: RetakeLike[], settingOf: (subjectId: string) => SubjectSettingLike) {
+  const outcomes = new Map(year);
+  let complete = true;
+  for (const r of retakes) {
+    const o = retakeOutcome(settingOf(r.subjectId).assessment, { score: num(r.score), passed: r.passed });
+    if (o) outcomes.set(r.subjectId, o);
+    else complete = false;
+  }
+  return { outcomes, complete };
+}
+
+/** Kết quả học tập after the retakes; null without retakes or while one still has no result. */
+export function academicAfterRetakes(year: Map<string, SubjectOutcome>, retakes: RetakeLike[], settingOf: (subjectId: string) => SubjectSettingLike): ResultLevel | null {
+  if (!retakes.length) return null;
+  const { outcomes, complete } = withRetakes(year, retakes, settingOf);
+  return complete ? academicLevel([...outcomes.values()]) : null;
+}
+
 /**
  * Recomputes SubjectResult rows (HK1, HK2, year) for the scoped subjects and
- * students, then refreshes their TermResult rows (academic level; title and
- * promotion for the year). Conduct, absent days and the homeroom comment are
- * kept as they are.
+ * students, then refreshes their TermResult rows: the academic level, and for
+ * the year the conduct from both semesters (Điều 8), title, the levels after
+ * retakes and summer training, and promotion (a promotion the school set by hand
+ * wins). Semester conduct, absent days and the homeroom comment are kept as
+ * they are.
  */
 export async function recomputeResults(db: Db, scope: RecomputeScope) {
   const { schoolId, academicYearId, classId } = scope;
@@ -124,7 +155,7 @@ export async function recomputeResults(db: Db, scope: RecomputeScope) {
   const settings = await loadSettings(db, schoolId);
   const settingOf = (subjectId: string) => settings.get(subjectId) ?? DEFAULT_SETTING;
 
-  const [scores, existing, terms, exemptions] = await Promise.all([
+  const [scores, existing, terms, exemptions, retakes, trainings] = await Promise.all([
     db.score.findMany({
       where: { classId, academicYearId, studentId: { in: studentIds }, ...(scope.subjectIds ? { subjectId: { in: scope.subjectIds } } : {}) },
       select: { studentId: true, subjectId: true, semester: true, kind: true, index: true, value: true, passed: true },
@@ -133,8 +164,10 @@ export async function recomputeResults(db: Db, scope: RecomputeScope) {
       where: { academicYearId, studentId: { in: studentIds } },
       select: { studentId: true, subjectId: true, semester: true, average: true, passed: true, exempt: true },
     }),
-    db.termResult.findMany({ where: { academicYearId, studentId: { in: studentIds } }, select: { studentId: true, semester: true, conduct: true, absentDays: true } }),
+    db.termResult.findMany({ where: { academicYearId, studentId: { in: studentIds } }, select: { studentId: true, semester: true, conduct: true, absentDays: true, promotionOverride: true } }),
     db.subjectExemption.findMany({ where: { academicYearId, studentId: { in: studentIds } }, select: { studentId: true, subjectId: true, semester: true } }),
+    db.subjectRetake.findMany({ where: { academicYearId, studentId: { in: studentIds } }, select: { studentId: true, subjectId: true, score: true, passed: true } }),
+    db.summerTraining.findMany({ where: { academicYearId, studentId: { in: studentIds } }, select: { studentId: true, result: true } }),
   ]);
   const exemptOf = (studentId: string, subjectId: string) => exemptTerms(exemptions.filter((e) => e.studentId === studentId && e.subjectId === subjectId));
 
@@ -185,20 +218,25 @@ export async function recomputeResults(db: Db, scope: RecomputeScope) {
   const termOf = (studentId: string, semester: number) => terms.find((t) => t.studentId === studentId && t.semester === semester);
   for (const studentId of studentIds) {
     for (const semester of [1, 2, YEAR]) {
-      const results = [...outcomes.entries()].filter(([k]) => k.startsWith(`${studentId}|`) && k.endsWith(`|${semester}`)).map(([, o]) => o);
+      const own = [...outcomes.entries()].filter(([k]) => k.startsWith(`${studentId}|`) && k.endsWith(`|${semester}`));
+      const results = own.map(([, o]) => o);
       const academic = academicLevel(results);
       const term = termOf(studentId, semester);
-      const conduct = term?.conduct ?? null;
+      const where = { studentId_academicYearId_semester: { studentId, academicYearId, semester } };
+      if (semester !== YEAR) {
+        ops.push(db.termResult.upsert({ where, create: { schoolId, academicYearId, semester, classId, studentId, academic }, update: { classId, academic, title: null, promotion: null } }));
+        continue;
+      }
+      // The year conduct follows the two semesters once both are known; until then whatever is stored stays.
+      const conduct = yearConduct(termOf(studentId, 1)?.conduct, termOf(studentId, 2)?.conduct) ?? term?.conduct ?? null;
       const absentDays = term?.absentDays ?? 0;
-      const title = semester === YEAR ? titleFor(academic, conduct, results) : null;
-      const promotion = semester === YEAR ? promotionFor(academic, conduct, absentDays) : null;
-      ops.push(
-        db.termResult.upsert({
-          where: { studentId_academicYearId_semester: { studentId, academicYearId, semester } },
-          create: { schoolId, academicYearId, semester, classId, studentId, academic, title, promotion },
-          update: { classId, academic, title, promotion },
-        }),
-      );
+      const title = titleFor(academic, conduct, results);
+      const year = new Map(own.map(([k, o]) => [k.split('|')[1], o]));
+      const academicAfterRetake = academicAfterRetakes(year, retakes.filter((r) => r.studentId === studentId), settingOf);
+      const conductAfterTraining = trainings.find((t) => t.studentId === studentId)?.result ?? null;
+      const promotion = term?.promotionOverride ?? promotionFor(academic, conduct, absentDays, { academicAfterRetake, conductAfterTraining });
+      const data = { academic, conduct, title, promotion, academicAfterRetake, conductAfterTraining };
+      ops.push(db.termResult.upsert({ where, create: { schoolId, academicYearId, semester, classId, studentId, ...data }, update: { classId, ...data } }));
     }
   }
 

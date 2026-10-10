@@ -36,6 +36,13 @@ export class ReportQuery {
   @ApiPropertyOptional({ example: '2026-10-01' }) @IsOptional() @Matches(DATE) from?: string;
   @ApiPropertyOptional({ example: '2026-10-31' }) @IsOptional() @Matches(DATE) to?: string;
 
+  @ApiPropertyOptional({ example: 1, description: 'Đợt xét công nhận hoàn thành chương trình THCS (1 hoặc 2)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([1, 2])
+  round?: number;
+
   @ApiPropertyOptional({ enum: StudentStatus }) @IsOptional() @IsEnum(StudentStatus) status?: StudentStatus;
   @ApiPropertyOptional({ enum: PromotionStatus }) @IsOptional() @IsEnum(PromotionStatus) promotion?: PromotionStatus;
 

@@ -22,13 +22,13 @@ export function ResultLevelTag({ level }: { level: string | null | undefined }) 
   );
 }
 
-/** Được lên lớp / Kiểm tra lại / Ở lại lớp. */
-export function PromotionTag({ status }: { status: string | null | undefined }) {
+/** Được lên lớp / Kiểm tra lại (or Rèn luyện hè when conduct failed) / Ở lại lớp. */
+export function PromotionTag({ status, review }: { status: string | null | undefined; review?: string | null }) {
   if (!status) return <Dash />;
   const l = PROMOTION_STATUS[status];
   return (
     <Tag color={l?.color} style={{ margin: 0 }}>
-      {l?.label ?? status}
+      {status === 'RETEST' && review === 'TRAINING' ? 'Rèn luyện hè' : (l?.label ?? status)}
     </Tag>
   );
 }

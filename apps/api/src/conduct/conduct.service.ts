@@ -2,6 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { ConductStatus, NotificationKind, Prisma, ResultLevel, Role, StudentStatus } from '@prisma/client';
 import { AcademicYearsService } from '../academic-years/academic-years';
 import { AuthUser } from '../common/auth-user';
+import { recomputeResults } from '../grades/results';
+import { YEAR } from '../grades/tt22';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ParentAccessService } from '../parents/parent-access.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -164,7 +166,8 @@ export class ConductService {
 
   /**
    * Leadership approval: REVIEWED assessments get their final total and level; for the
-   * semester (month 0) the level is written to TermResult.conduct and the family is told.
+   * semester (month 0) the level is written to TermResult.conduct, the year results of
+   * those students are refreshed (year conduct, title, promotion) and the family is told.
    */
   async approve(user: AuthUser, dto: ClassStudentsDto) {
     const klass = await this.getClass(user.schoolId, dto.classId);
@@ -198,11 +201,14 @@ export class ConductService {
           )
         : []),
     ]);
-    if (dto.month === 0) for (const r of results) await this.notifyApproved(user.schoolId, klass, r.a, r.level, r.finalTotal);
+    if (dto.month === 0 && results.length) {
+      await recomputeResults(this.prisma, { schoolId: user.schoolId, academicYearId: klass.academicYearId, classId: klass.id, studentIds: results.map((r) => r.a.studentId) });
+      for (const r of results) await this.notifyApproved(user.schoolId, klass, r.a, r.level, r.finalTotal);
+    }
     return { approved: results.length };
   }
 
-  /** Sends APPROVED assessments back to REVIEWED and clears the conduct level in TermResult. */
+  /** Sends APPROVED assessments back to REVIEWED and clears the conduct level of the semester and the year in TermResult. */
   async reopen(user: AuthUser, dto: ClassStudentsDto) {
     const klass = await this.getClass(user.schoolId, dto.classId);
     const targets = (await this.candidates(klass, dto)).filter((a) => canReopen(a.status));
@@ -216,12 +222,13 @@ export class ConductService {
       ...(dto.month === 0
         ? [
             this.prisma.termResult.updateMany({
-              where: { academicYearId: klass.academicYearId, semester: dto.semester, studentId: { in: targets.map((a) => a.studentId) } },
+              where: { academicYearId: klass.academicYearId, semester: { in: [dto.semester, YEAR] }, studentId: { in: targets.map((a) => a.studentId) } },
               data: { conduct: null },
             }),
           ]
         : []),
     ]);
+    if (dto.month === 0) await recomputeResults(this.prisma, { schoolId: user.schoolId, academicYearId: klass.academicYearId, classId: klass.id, studentIds: targets.map((a) => a.studentId) });
     return { reopened: ids.length };
   }
 

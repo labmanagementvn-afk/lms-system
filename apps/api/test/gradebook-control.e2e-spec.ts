@@ -298,7 +298,9 @@ describe('Gradebook control and reports (e2e)', () => {
         'score-edits': { semester: 1 },
       };
       const catalogue = await api().get('/api/v1/reports').set(admin()).expect(200);
-      for (const { key } of catalogue.body) {
+      // The end-of-year documents need a summer review and a decision to print: end-of-year.e2e builds them.
+      const endOfYear = ['Cuối năm học', 'Hoàn thành chương trình THCS'];
+      for (const { key } of catalogue.body.filter((r: any) => !endOfYear.includes(r.group))) {
         expect(params[key]).toBeDefined();
         const json = await api().get(`/api/v1/reports/${key}`).query(params[key]).set(admin());
         expect([key, json.status]).toEqual([key, 200]);

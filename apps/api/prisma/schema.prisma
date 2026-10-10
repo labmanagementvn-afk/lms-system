@@ -125,6 +125,11 @@ model School {
   subjectExemptions SubjectExemption[]
   gradeVisibility   GradeVisibility?
 
+  subjectRetakes    SubjectRetake[]
+  summerTrainings   SummerTraining[]
+  completionRounds  CompletionRound[]
+  completionRecords CompletionRecord[]
+
   users         User[]
   teachers      Teacher[]
   students      Student[]
@@ -251,6 +256,7 @@ model Subject {
   tests          Test[]
   columnLocks    GradeColumnLock[]
   exemptions     SubjectExemption[]
+  retakes        SubjectRetake[]
 
   @@unique([schoolId, code])
 }
@@ -345,6 +351,9 @@ model Student {
   testAttempts       TestAttempt[]
   liveAttendances    LiveAttendance[]
   subjectExemptions  SubjectExemption[]
+  subjectRetakes     SubjectRetake[]
+  summerTraining     SummerTraining[]
+  completionRecords  CompletionRecord[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -420,6 +429,9 @@ model Class {
   termResults        TermResult[]
   gradeLocks         GradeLock[]
   conductAssessments ConductAssessment[]
+  subjectRetakes     SubjectRetake[]
+  summerTrainings    SummerTraining[]
+  completionRecords  CompletionRecord[]
 
   @@unique([academicYearId, name])
   @@index([schoolId])
@@ -2036,19 +2048,24 @@ model SubjectResult {
 
 /// Semester / year outcome per student: academic level, conduct level, title, promotion.
 model TermResult {
-  id              String           @id @default(cuid())
-  schoolId        String
-  academicYearId  String
-  semester        Int
-  classId         String
-  studentId       String
-  academic        ResultLevel?
-  conduct         ResultLevel?
-  title           String?
-  promotion       PromotionStatus?
-  absentDays      Int              @default(0)
-  homeroomComment String?
-  updatedAt       DateTime         @updatedAt
+  id                   String           @id @default(cuid())
+  schoolId             String
+  academicYearId       String
+  semester             Int
+  classId              String
+  studentId            String
+  academic             ResultLevel?
+  conduct              ResultLevel?
+  title                String?
+  promotion            PromotionStatus?
+  absentDays           Int              @default(0)
+  homeroomComment      String?
+  // Phase 7 (year only): academic level once every retake has a result (Điều 14 TT22), conduct
+  // re-evaluated after summer training (Điều 13), and a promotion the school sets by hand.
+  academicAfterRetake  ResultLevel?
+  conductAfterTraining ResultLevel?
+  promotionOverride    PromotionStatus?
+  updatedAt            DateTime         @updatedAt
 
   school       School       @relation(fields: [schoolId], references: [id])
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
@@ -2790,4 +2807,119 @@ model GradeVisibility {
   updatedAt       DateTime @updatedAt
 
   school School @relation(fields: [schoolId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: end of the school year: retakes (kiểm tra lại), summer training (rèn
+// luyện hè), promotion after both, and the THCS completion review (xét công nhận
+// hoàn thành chương trình giáo dục THCS, confirmed by the principal in the học bạ).
+// ---------------------------------------------------------------------------
+
+/// A subject a student is re-assessed in after the year (Điều 14 TT22); its result replaces the year result of the subject for promotion.
+model SubjectRetake {
+  id             String    @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  classId        String
+  studentId      String
+  subjectId      String
+  /// Retake mark of a score subject.
+  score          Decimal?  @db.Decimal(4, 1)
+  /// Đạt / Chưa đạt of a comment subject.
+  passed         Boolean?
+  note           String?
+  createdById    String
+  createdAt      DateTime  @default(now())
+  enteredById    String?
+  enteredAt      DateTime?
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, subjectId, academicYearId])
+  @@index([schoolId, academicYearId])
+}
+
+/// Rèn luyện trong kì nghỉ hè (Điều 13 TT22): tasks set by the homeroom teacher and the re-evaluated year conduct.
+model SummerTraining {
+  id             String       @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  classId        String
+  studentId      String
+  tasks          String
+  /// Re-evaluated year conduct; it replaces the year conduct for promotion.
+  result         ResultLevel?
+  comment        String?
+  assignedById   String
+  assignedAt     DateTime     @default(now())
+  evaluatedById  String?
+  evaluatedAt    DateTime?
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, academicYearId])
+  @@index([schoolId, academicYearId])
+}
+
+/// One round of the THCS completion review: the council (hội đồng xét), its meeting and the recognition decision.
+model CompletionRound {
+  id                String    @id @default(cuid())
+  schoolId          String
+  academicYearId    String
+  /// 1 = before the school year ends; 2 = before the next one starts (after retakes and summer training).
+  round             Int
+  /// The principal's decision setting up the council.
+  councilDecisionNo String?
+  councilDecidedOn  DateTime? @db.Date
+  meetingAt         DateTime?
+  meetingPlace      String?
+  /// [{ name, position, role }]; role is Chủ tịch, Phó Chủ tịch, Thư ký or Ủy viên.
+  members           Json      @default("[]")
+  /// The recognition decision, set when the round is recognised.
+  decisionNo        String?
+  decidedOn         DateTime? @db.Date
+  signerTitle       String?
+  signerName        String?
+  recognizedAt      DateTime?
+  recognizedById    String?
+  /// Who the decision left out and why, as they stood at the decision, so the lists and minutes print the same later.
+  notRecognized     Json?
+  updatedAt         DateTime  @updatedAt
+
+  school  School             @relation(fields: [schoolId], references: [id])
+  records CompletionRecord[]
+
+  @@unique([academicYearId, round])
+  @@index([schoolId])
+}
+
+/// A grade 9 student in the completion review: the dossier, priority group and, once recognised, the round and register number.
+model CompletionRecord {
+  id              String    @id @default(cuid())
+  schoolId        String
+  academicYearId  String
+  studentId       String
+  classId         String
+  dossierComplete Boolean   @default(true)
+  /// Diện ưu tiên, printed on the list.
+  priority        String?
+  note            String?
+  roundId         String?
+  /// Number in the school's register of completion confirmations (số vào sổ).
+  registerNo      Int?
+  recognizedAt    DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  school  School           @relation(fields: [schoolId], references: [id])
+  student Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  round   CompletionRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, academicYearId])
+  @@index([schoolId, academicYearId])
 }

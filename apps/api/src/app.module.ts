@@ -23,6 +23,7 @@ import { LibraryModule } from './library/library.module';
 import { LmsModule } from './lms/lms.module';
 import { MoetModule } from './moet/moet.module';
 import { ReportsModule } from './reports/reports.module';
+import { ReviewModule } from './review/review.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ParentsModule } from './parents/parents.module';
 import { PlatformModule } from './platform/platform.module';
@@ -76,6 +77,8 @@ import { UploadsModule } from './uploads/uploads.module';
     DistrictModule,
     MoetModule,
     ReportsModule,
+    // End of the school year
+    ReviewModule,
   ],
 })
 export class AppModule {}

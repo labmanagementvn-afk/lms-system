@@ -88,6 +88,8 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
       children: [
         { key: '/grades', label: <Link href="/grades">Nhập điểm</Link> },
         { key: '/grades/results', label: <Link href="/grades/results">Kết quả học tập</Link> },
+        { key: '/grades/review', label: <Link href="/grades/review">Kiểm tra lại & rèn luyện hè</Link> },
+        { key: '/grades/completion', label: <Link href="/grades/completion">Xét hoàn thành THCS</Link> },
         { key: '/grades/control', label: <Link href="/grades/control">Quản lý sổ điểm</Link> },
         ...(staff ? [{ key: '/grades/settings', label: <Link href="/grades/settings">Môn học & cách đánh giá</Link> }] : []),
       ],

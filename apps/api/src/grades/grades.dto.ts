@@ -173,10 +173,11 @@ export class UpdateResultDto {
   @MaxLength(2000)
   homeroomComment?: string | null;
 
-  @ApiPropertyOptional({ enum: PromotionStatus, description: 'Ghi đè kết quả lên lớp (chỉ cả năm)' })
+  @ApiPropertyOptional({ enum: PromotionStatus, nullable: true, description: 'Ghi đè kết quả lên lớp (chỉ cả năm); null để hệ thống tự xét lại' })
   @IsOptional()
+  @ValidateIf((o) => o.promotion !== null)
   @IsEnum(PromotionStatus)
-  promotion?: PromotionStatus;
+  promotion?: PromotionStatus | null;
 }
 
 export class LockDto {

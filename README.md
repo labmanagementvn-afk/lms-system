@@ -91,6 +91,12 @@ Payment and accounting integrations run against **sandbox implementations**; no 
 - **Quản lý sổ điểm**: per-column locks by grade and subject, an entry window and edit limit for teachers, an edit log, entry monitoring per teacher with the list of missing marks, subject exemptions (miễn học) carried through results and reports, and settings for what parents and students see, including publishing marks only after the class gradebook is locked.
 - **Excel**: the score sheet downloads as Excel and imports back with a check first that lists every change and bad row. See [docs/reports-gradebook-control.md](docs/reports-gradebook-control.md).
 
+### Phase 7
+
+- **Kiểm tra lại & rèn luyện hè**: retakes registered by the office and entered by subject teachers, summer training set and re-evaluated by the homeroom teacher, and promotion recomputed from both (Thông tư 22/2021, Điều 12 to 14), with promotion set by hand when needed.
+- **Xét hoàn thành chương trình THCS**: the review that replaced the THCS diploma in 2026, in two rounds, with the council, the decision, the register numbers, the minutes, both lists and a confirmation paper per student, and the principal's confirmation in the học bạ.
+- **Giấy khen** for Học sinh Xuất sắc and Giỏi, one certificate per page. See [docs/end-of-year.md](docs/end-of-year.md).
+
 Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT`, `DRIVER` and `STUDENT` only reach the parent, driver and student apps; `DISTRICT` only reaches the district portal.
 
 ## Tests

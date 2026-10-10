@@ -12,7 +12,7 @@ import { Letterhead, ReportDocument, ReportPreview } from '@/components/reports/
 import { api } from '@/lib/api';
 import { useClasses, useSubjects } from '@/lib/hooks';
 
-type Param = 'classId' | 'subjectId' | 'studentId' | 'semester' | 'term' | 'gradeLevel' | 'from' | 'to' | 'status' | 'promotion';
+type Param = 'classId' | 'subjectId' | 'studentId' | 'semester' | 'term' | 'gradeLevel' | 'from' | 'to' | 'status' | 'promotion' | 'round';
 interface ReportInfo {
   key: string;
   group: string;
@@ -30,6 +30,7 @@ interface Values {
   range?: [Dayjs, Dayjs];
   status?: string;
   promotion?: string;
+  round?: number;
   signerTitle?: string;
   signerName?: string;
   place?: string;
@@ -56,7 +57,7 @@ export default function ReportsPage() {
   useEffect(() => {
     setPreview(null);
     const term = report?.params.includes('term');
-    form.setFieldsValue({ semester: report?.params.includes('semester') || term ? 1 : undefined, range: [dayjs().startOf('month'), dayjs()] });
+    form.setFieldsValue({ semester: report?.params.includes('semester') || term ? 1 : undefined, round: report?.params.includes('round') ? 1 : undefined, range: [dayjs().startOf('month'), dayjs()] });
   }, [key, report, form]);
 
   const query = (v: Values) => ({
@@ -69,6 +70,7 @@ export default function ReportsPage() {
     to: report?.params.includes('to') ? v.range?.[1]?.format('YYYY-MM-DD') : undefined,
     status: v.status,
     promotion: v.promotion,
+    round: report?.params.includes('round') ? v.round : undefined,
     signerTitle: v.signerTitle || undefined,
     signerName: v.signerName || undefined,
     place: v.place || undefined,
@@ -166,6 +168,16 @@ export default function ReportsPage() {
                           { value: 'TRANSFERRED', label: 'Chuyển trường' },
                           { value: 'DROPPED', label: 'Thôi học' },
                           { value: 'GRADUATED', label: 'Đã tốt nghiệp' },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
+                  {has('round') && (
+                    <Form.Item name="round" label="Đợt xét">
+                      <Segmented
+                        options={[
+                          { value: 1, label: 'Đợt 1' },
+                          { value: 2, label: 'Đợt 2' },
                         ]}
                       />
                     </Form.Item>
