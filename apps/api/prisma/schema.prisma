@@ -130,6 +130,12 @@ model School {
   completionRounds  CompletionRound[]
   completionRecords CompletionRecord[]
 
+  smsSetting   SmsSetting?
+  smsTemplates SmsTemplate[]
+  smsCampaigns SmsCampaign[]
+  moetSyncs    MoetSync[]
+  eRecords     ERecord[]
+
   users         User[]
   teachers      Teacher[]
   students      Student[]
@@ -232,6 +238,8 @@ model User {
   storedFiles   StoredFile[]
   threads       DiscussionThread[]
   posts         DiscussionPost[]
+
+  signatureProfile SignatureProfile?
 
   @@index([schoolId])
   @@index([districtId])
@@ -354,6 +362,7 @@ model Student {
   subjectRetakes     SubjectRetake[]
   summerTraining     SummerTraining[]
   completionRecords  CompletionRecord[]
+  eRecords           ERecord[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -432,6 +441,7 @@ model Class {
   subjectRetakes     SubjectRetake[]
   summerTrainings    SummerTraining[]
   completionRecords  CompletionRecord[]
+  smsQuota           SmsClassQuota?
 
   @@unique([academicYearId, name])
   @@index([schoolId])
@@ -2922,4 +2932,229 @@ model CompletionRecord {
 
   @@unique([studentId, academicYearId])
   @@index([schoolId, academicYearId])
+}
+
+// ---- Phase 8: SMS to parents and teachers, direct sync with the education database, signed records ----
+
+enum SmsAudience {
+  PARENT
+  TEACHER
+}
+
+enum SmsCampaignStatus {
+  SCHEDULED
+  SENDING
+  SENT
+  CANCELLED
+}
+
+/// SMS settings of a school: the brandname texts go out under and the monthly quotas.
+model SmsSetting {
+  schoolId           String   @id
+  /// Sender name registered with the carrier, e.g. THCS DEMO.
+  brandname          String?
+  /// SMS (each 160 characters, or 70 with diacritics) a class may send its parents per month.
+  classMonthlyQuota  Int      @default(200)
+  /// SMS per month for messages charged to no class: to teachers and staff.
+  schoolMonthlyQuota Int      @default(500)
+  updatedAt          DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+/// A class's own monthly SMS quota when it differs from the school's default.
+model SmsClassQuota {
+  classId      String   @id
+  schoolId     String
+  monthlyLimit Int
+  updatedAt    DateTime @updatedAt
+
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+}
+
+/// A reusable text; {hoc_sinh}, {lop} and the other placeholders are filled per recipient.
+model SmsTemplate {
+  id        String      @id @default(cuid())
+  schoolId  String
+  name      String
+  audience  SmsAudience
+  body      String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+}
+
+/// One text to a group of parents or teachers, sent now or at a set time.
+model SmsCampaign {
+  id          String            @id @default(cuid())
+  schoolId    String
+  audience    SmsAudience
+  title       String
+  /// As written, placeholders included.
+  body        String
+  /// With Vietnamese diacritics (70 characters per SMS) or without (160).
+  accented    Boolean           @default(false)
+  /// What was picked, for the history: { classIds, studentIds, teacherIds, allTeachers, label }.
+  scope       Json
+  scheduledAt DateTime
+  status      SmsCampaignStatus @default(SCHEDULED)
+  recipients  Int               @default(0)
+  /// SMS counted against the quotas.
+  segments    Int               @default(0)
+  createdById String
+  createdAt   DateTime          @default(now())
+  finishedAt  DateTime?
+  cancelledAt DateTime?
+
+  school   School       @relation(fields: [schoolId], references: [id])
+  messages SmsMessage[]
+
+  @@index([schoolId, scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+/// One text to one phone number and how its delivery went.
+model SmsMessage {
+  id            String     @id @default(cuid())
+  campaignId    String
+  schoolId      String
+  /// Place in the campaign's list: by class, then name.
+  seq           Int        @default(0)
+  phone         String
+  /// The parent's or teacher's name.
+  name          String
+  studentId     String?
+  /// The class whose quota pays for it; null charges the school's.
+  classId       String?
+  teacherId     String?
+  /// Personalised, and without diacritics unless the campaign is accented.
+  body          String
+  segments      Int
+  status        SyncStatus @default(PENDING)
+  attempts      Int        @default(0)
+  nextAttemptAt DateTime   @default(now())
+  externalRef   String?
+  lastError     String?
+  sentAt        DateTime?
+
+  campaign SmsCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([status, nextAttemptAt])
+  @@index([schoolId, classId])
+}
+
+enum MoetTarget {
+  /// CSDL ngành giáo dục of the ministry.
+  MOET
+  /// The database of the provincial Department (Sở GD&ĐT).
+  PROVINCE
+}
+
+enum MoetSyncStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+/// One push of one kind of records straight to the education database, with what it refused.
+model MoetSync {
+  id             String         @id @default(cuid())
+  schoolId       String
+  target         MoetTarget
+  kind           MoetExportKind
+  academicYearId String?
+  semester       Int?
+  /// The account it signed in with; the password is never stored.
+  username       String
+  provider       String
+  status         MoetSyncStatus
+  total          Int            @default(0)
+  accepted       Int            @default(0)
+  rejected       Int            @default(0)
+  /// [{ row, code, name, message }] for each record the database refused.
+  errors         Json           @default("[]")
+  /// The batch number the database gave back.
+  externalRef    String?
+  error          String?
+  createdById    String
+  startedAt      DateTime       @default(now())
+  finishedAt     DateTime?
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, startedAt])
+}
+
+enum SignatureProvider {
+  VNPT_SMARTCA
+  VIETTEL_MYSIGN
+}
+
+/// A user's remote signing account and the certificate it signs with.
+model SignatureProfile {
+  userId        String            @id
+  schoolId      String
+  provider      SignatureProvider
+  /// What the provider knows the signer by: CCCD number or phone.
+  account       String
+  certSerial    String
+  certSubject   String
+  certIssuer    String
+  certValidFrom DateTime
+  certValidTo   DateTime
+  updatedAt     DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+}
+
+enum ERecordKind {
+  HOC_BA
+}
+
+enum ERecordStatus {
+  /// Waiting for the homeroom teacher to sign.
+  DRAFT
+  /// Signed by the homeroom teacher, waiting for the principal.
+  HOMEROOM_SIGNED
+  /// Signed by the principal: issued.
+  ISSUED
+  /// Withdrawn; a later version replaces it.
+  REVOKED
+}
+
+/// A record signed digitally: one student's học bạ for one school year.
+model ERecord {
+  id             String        @id @default(cuid())
+  schoolId       String
+  kind           ERecordKind
+  studentId      String
+  academicYearId String
+  classId        String
+  version        Int           @default(1)
+  status         ERecordStatus @default(DRAFT)
+  /// The document as generated ({ document, letterhead }); this is what is signed.
+  content        Json
+  /// SHA-256 of the canonical JSON of content.
+  contentHash    String
+  /// [{ role, userId, name, provider, certSerial, certSubject, signedAt, transactionId, signature }]
+  signatures     Json          @default("[]")
+  createdById    String
+  createdAt      DateTime      @default(now())
+  issuedAt       DateTime?
+  revokedAt      DateTime?
+  revokedReason  String?
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, academicYearId, kind, version])
+  @@index([schoolId, academicYearId, classId])
 }

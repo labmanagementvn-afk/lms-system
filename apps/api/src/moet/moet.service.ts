@@ -54,7 +54,8 @@ export class MoetService {
     }
   }
 
-  private async resolveYear(schoolId: string, academicYearId: string | undefined, kind: MoetExportKind) {
+  /** The year asked for, else the current one (teachers need none). */
+  async resolveYear(schoolId: string, academicYearId: string | undefined, kind: MoetExportKind) {
     if (academicYearId) {
       const y = await this.prisma.academicYear.findFirst({ where: { id: academicYearId, schoolId } });
       if (!y) throw new NotFoundException('Không tìm thấy năm học');
@@ -65,7 +66,8 @@ export class MoetService {
     return current;
   }
 
-  private async build(schoolId: string, moetCode: string, kind: MoetExportKind, year: { id: string; name: string } | null, semester: number): Promise<{ header: string[]; rows: CsvCell[][] }> {
+  /** The header and rows of one kind in the exchange template; the file export and the direct sync both send these. */
+  async build(schoolId: string, moetCode: string, kind: MoetExportKind, year: { id: string; name: string } | null, semester: number): Promise<{ header: string[]; rows: CsvCell[][] }> {
     switch (kind) {
       case MoetExportKind.STUDENTS: {
         const students = await this.prisma.student.findMany({

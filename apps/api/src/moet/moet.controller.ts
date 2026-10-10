@@ -4,16 +4,20 @@ import { Role } from '@prisma/client';
 import type { Response } from 'express';
 import { AuthUser } from '../common/auth-user';
 import { AllowQueryToken, CurrentUser, Roles } from '../common/decorators';
-import { CreateExportDto, ExportQuery, ImportStudentsDto } from './moet.dto';
+import { MoetSyncService } from './moet-sync.service';
+import { CreateExportDto, ExportQuery, ImportStudentsDto, SyncDto, SyncQuery } from './moet.dto';
 import { MoetService } from './moet.service';
 
-/** Trao đổi dữ liệu CSDL ngành: exports in the MOET template and the student list import. */
+/** Trao đổi dữ liệu CSDL ngành: exports in the MOET template, the student list import and the direct sync. */
 @ApiTags('moet')
 @ApiBearerAuth()
 @Roles(Role.ADMIN, Role.STAFF)
 @Controller('moet')
 export class MoetController {
-  constructor(private readonly service: MoetService) {}
+  constructor(
+    private readonly service: MoetService,
+    private readonly syncs: MoetSyncService,
+  ) {}
 
   @Get('exports')
   list(@CurrentUser() user: AuthUser, @Query() query: ExportQuery) {
@@ -43,6 +47,24 @@ export class MoetController {
   @Header('Content-Disposition', 'attachment; filename="Mau_HocSinh_CSDL_nganh.csv"')
   template(@CurrentUser() user: AuthUser) {
     return this.service.template(user.schoolId);
+  }
+
+  @Get('sync')
+  @ApiOperation({ summary: 'Submissions to the education databases, newest first, with the gateway in use and the last account names' })
+  syncHistory(@CurrentUser() user: AuthUser, @Query() query: SyncQuery) {
+    return this.syncs.list(user.schoolId, query);
+  }
+
+  @Get('sync/:id')
+  @ApiOperation({ summary: 'One submission with the records the database refused' })
+  syncOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.syncs.get(user.schoolId, id);
+  }
+
+  @Post('sync')
+  @ApiOperation({ summary: 'Submit one kind of records straight to CSDL ngành or the Sở; the password is used for this call only' })
+  sync(@CurrentUser() user: AuthUser, @Body() dto: SyncDto) {
+    return this.syncs.sync(user, dto);
   }
 
   @Post('import/students')

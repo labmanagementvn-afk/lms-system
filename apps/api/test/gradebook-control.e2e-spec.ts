@@ -296,6 +296,7 @@ describe('Gradebook control and reports (e2e)', () => {
         'entry-monitoring': { semester: 1 },
         'missing-scores': { classId, semester: 1 },
         'score-edits': { semester: 1 },
+        'sms-usage': { from: '2026-09-01', to: '2026-10-31' },
       };
       const catalogue = await api().get('/api/v1/reports').set(admin()).expect(200);
       // The end-of-year documents need a summer review and a decision to print: end-of-year.e2e builds them.

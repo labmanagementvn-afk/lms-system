@@ -1,11 +1,12 @@
 'use client';
 
 import { DownloadOutlined, ExportOutlined, InboxOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Card, Col, Descriptions, Row, Select, Space, Table, Tag, Typography, Upload } from 'antd';
+import { Alert, App, Button, Card, Col, Descriptions, Row, Select, Space, Table, Tabs, Tag, Typography, Upload } from 'antd';
 import { useState } from 'react';
 import useSWR from 'swr';
 import { formatDateTime } from '@/components/lms/format';
 import { PageHeader } from '@/components/PageHeader';
+import { MoetSyncTab } from '@/components/settings/MoetSyncTab';
 import { api, API_URL, getToken } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useAcademicYears } from '@/lib/hooks';
@@ -37,7 +38,7 @@ interface ImportSummary {
 
 const downloadUrl = (id: string) => `${API_URL}/moet/exports/${id}/download?access_token=${encodeURIComponent(getToken() ?? '')}`;
 
-/** Dữ liệu CSDL ngành: build the MOET exchange files and import a student list in the same template. */
+/** Dữ liệu CSDL ngành: send records straight to the education databases, build the exchange files, and import a student list in the same template. */
 export default function MoetPage() {
   const { me } = useAuth();
   const { message } = App.useApp();
@@ -82,9 +83,8 @@ export default function MoetPage() {
     }
   }
 
-  return (
+  const exportsTab = (
     <>
-      <PageHeader title="Dữ liệu CSDL ngành GDĐT" />
       <Typography.Paragraph type="secondary">
         Tệp xuất theo mẫu trao đổi của cơ sở dữ liệu ngành (CSV, UTF-8, mở được bằng Excel) để tải lên cổng của Phòng/Sở. Mã trường dùng trong tệp là mã CSDL ngành khai báo ở
         mục Trường học.
@@ -132,8 +132,12 @@ export default function MoetPage() {
           { title: '', width: 60, render: (_, r) => r.fileId && <Button size="small" type="text" icon={<DownloadOutlined />} href={downloadUrl(r.id)} /> },
         ]}
       />
+    </>
+  );
 
-      <Typography.Title level={5}>Nhập danh sách học sinh</Typography.Title>
+  const importTab = (
+    <>
+      <Typography.Title level={5} style={{ marginTop: 0 }}>Nhập danh sách học sinh</Typography.Title>
       <Typography.Paragraph type="secondary">
         Tệp CSV theo mẫu học sinh của CSDL ngành (các cột được nhận diện theo tên, thứ tự không quan trọng). Học sinh được cập nhật theo mã; mã mới được tạo thêm; cột
         &quot;Lớp&quot; xếp học sinh vào lớp cùng tên của năm học hiện tại. <a href={`${API_URL}/moet/import/students/template?access_token=${encodeURIComponent(getToken() ?? '')}`}>Tải mẫu</a>
@@ -192,6 +196,19 @@ export default function MoetPage() {
           )}
         </Col>
       </Row>
+    </>
+  );
+
+  return (
+    <>
+      <PageHeader title="Dữ liệu CSDL ngành GDĐT" />
+      <Tabs
+        items={[
+          { key: 'sync', label: 'Đồng bộ trực tiếp', children: <MoetSyncTab /> },
+          { key: 'exports', label: 'Xuất tệp', children: exportsTab },
+          { key: 'import', label: 'Nhập học sinh', children: importTab },
+        ]}
+      />
     </>
   );
 }

@@ -277,7 +277,33 @@ export const MOET_EXPORT_KIND: Record<string, { label: string; hint: string }> =
   CLASSES: { label: 'Danh sách lớp', hint: 'Lớp, khối, phòng, giáo viên chủ nhiệm, sĩ số của năm học' },
   TERM_RESULTS: { label: 'Kết quả học kỳ', hint: 'Xếp loại học tập, rèn luyện, danh hiệu, lên lớp và điểm trung bình các môn' },
 };
+export const MOET_TARGET: Record<string, string> = { MOET: 'CSDL ngành (Bộ GD&ĐT)', PROVINCE: 'CSDL Sở GD&ĐT' };
+export const MOET_SYNC_STATUS: Record<string, { label: string; color: string }> = {
+  SUCCESS: { label: 'Thành công', color: 'green' },
+  PARTIAL: { label: 'Nhận một phần', color: 'gold' },
+  FAILED: { label: 'Thất bại', color: 'red' },
+};
 export const MOET_EXPORT_STATUS: Record<string, { label: string; color: string }> = { DONE: { label: 'Hoàn tất', color: 'green' }, FAILED: { label: 'Lỗi', color: 'red' } };
+export const ERECORD_STATUS: Record<string, { label: string; color: string }> = {
+  NONE: { label: 'Chưa tạo', color: 'default' },
+  DRAFT: { label: 'Chờ GVCN ký', color: 'blue' },
+  HOMEROOM_SIGNED: { label: 'Chờ Hiệu trưởng ký', color: 'gold' },
+  ISSUED: { label: 'Đã phát hành', color: 'green' },
+  REVOKED: { label: 'Đã thu hồi', color: 'red' },
+};
+export const SIGNATURE_PROVIDER: Record<string, string> = { VNPT_SMARTCA: 'VNPT SmartCA', VIETTEL_MYSIGN: 'Viettel MySign' };
+export const SMS_AUDIENCE: Record<string, string> = { PARENT: 'Phụ huynh', TEACHER: 'Giáo viên' };
+export const SMS_CAMPAIGN_STATUS: Record<string, { label: string; color: string }> = {
+  SCHEDULED: { label: 'Hẹn giờ', color: 'blue' },
+  SENDING: { label: 'Đang gửi', color: 'gold' },
+  SENT: { label: 'Đã gửi', color: 'green' },
+  CANCELLED: { label: 'Đã hủy', color: 'default' },
+};
+export const SMS_STATUS: Record<string, { label: string; color: string }> = {
+  PENDING: { label: 'Đang chờ', color: 'blue' },
+  SUCCESS: { label: 'Thành công', color: 'green' },
+  FAILED: { label: 'Lỗi', color: 'red' },
+};
 export const HTTP_METHOD: Record<string, { label: string; color: string }> = {
   POST: { label: 'Tạo', color: 'green' },
   PUT: { label: 'Ghi', color: 'blue' },
@@ -316,4 +342,5 @@ export const AREA: Record<string, string> = {
   moet: 'CSDL ngành',
   district: 'Phòng/Sở',
   audit: 'Nhật ký',
+  sms: 'Tin nhắn SMS',
 };

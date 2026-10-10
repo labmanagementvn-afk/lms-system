@@ -27,6 +27,6 @@ export function channelAdaptersFactory(): Map<NotificationChannel, ChannelAdapte
 @Module({
   controllers: [NotificationsController],
   providers: [NotificationsService, DispatcherService, AlertsService, { provide: CHANNEL_ADAPTERS, useFactory: channelAdaptersFactory }],
-  exports: [NotificationsService, DispatcherService, AlertsService],
+  exports: [NotificationsService, DispatcherService, AlertsService, CHANNEL_ADAPTERS],
 })
 export class NotificationsModule {}

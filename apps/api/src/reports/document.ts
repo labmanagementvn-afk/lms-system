@@ -45,6 +45,8 @@ export interface Signer {
   name?: string | null;
   /** Defaults to "(Ký, ghi rõ họ tên và đóng dấu)" for the signer and "(Ký, ghi rõ họ tên)" for a cosigner. */
   hint?: string;
+  /** A digital signature's stamp, drawn in a frame where the handwritten signature would go. */
+  stamp?: string[];
 }
 
 /** One printed document: letterhead, title, blocks and the signature. */

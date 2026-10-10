@@ -13,6 +13,7 @@ import { BusModule } from './bus/bus.module';
 import { CanteenModule } from './canteen/canteen.module';
 import { ClassesModule } from './classes/classes.module';
 import { DistrictModule } from './district/district.module';
+import { EsignModule } from './esign/esign.module';
 import { ConductModule } from './conduct/conduct.module';
 import { FinanceModule } from './finance/finance.module';
 import { GradesModule } from './grades/grades.module';
@@ -29,6 +30,7 @@ import { ParentsModule } from './parents/parents.module';
 import { PlatformModule } from './platform/platform.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SchedulesModule } from './schedules/schedules.module';
+import { SmsModule } from './sms/sms.module';
 import { StatsModule } from './stats/stats.module';
 import { StudentsModule } from './students/students.module';
 import { StoreModule } from './store/store.module';
@@ -79,6 +81,9 @@ import { UploadsModule } from './uploads/uploads.module';
     ReportsModule,
     // End of the school year
     ReviewModule,
+    // Phase 8
+    SmsModule,
+    EsignModule,
   ],
 })
 export class AppModule {}

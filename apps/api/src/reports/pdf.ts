@@ -171,16 +171,33 @@ function drawTable(doc: Doc, block: TableBlock) {
   doc.y += 10;
 }
 
-/** One signer block: title in capitals, the hint, room for the signature, the name. */
+const STAMP_COLOR = '#B91C1C';
+
+/** One signer block: title in capitals, the hint, room for the signature (or a digital signature's stamp), the name. */
 function drawSigner(doc: Doc, s: Signer, x: number, y: number, w: number, hint: string) {
   font(doc, 'B', 11).text(s.title.toUpperCase(), x, y, { width: w, align: 'center' });
   font(doc, 'I', 10).text(s.hint ?? hint, x, doc.y, { width: w, align: 'center' });
-  if (s.name) font(doc, 'B', 11).text(s.name, x, doc.y + 50, { width: w, align: 'center' });
+  let nameY = doc.y + 50;
+  if (s.stamp?.length) {
+    const boxW = Math.min(w - 16, 210);
+    const boxX = x + (w - boxW) / 2;
+    const boxY = doc.y + 6;
+    const lineH = 10.5;
+    const boxH = s.stamp.length * lineH + 8;
+    doc.save().lineWidth(0.9).strokeColor(STAMP_COLOR).roundedRect(boxX, boxY, boxW, boxH, 3).stroke().restore();
+    s.stamp.forEach((line, i) => {
+      font(doc, i === 0 ? 'B' : 'R', 8.5).fillColor(STAMP_COLOR).text(line, boxX + 6, boxY + 4 + i * lineH, { width: boxW - 12, lineBreak: false, ellipsis: true });
+    });
+    doc.fillColor('black');
+    nameY = boxY + boxH + 8;
+  }
+  if (s.name) font(doc, 'B', 11).text(s.name, x, nameY, { width: w, align: 'center' });
   return doc.y;
 }
 
 function drawSignature(doc: Doc, lh: Letterhead, page: ReportPage) {
-  ensureSpace(doc, 110 + (page.footnote?.length ?? 0) * 4);
+  const stamped = !!(page.signer?.stamp?.length || page.cosigner?.stamp?.length);
+  ensureSpace(doc, 110 + (stamped ? 24 : 0) + (page.footnote?.length ?? 0) * 4);
   const w = contentWidth(doc) * 0.45;
   const x = left(doc) + contentWidth(doc) - w;
   const top = doc.y + 4;
