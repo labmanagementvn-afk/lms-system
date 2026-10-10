@@ -61,7 +61,18 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
   const staff = me.role !== 'TEACHER';
   const items = [
     { key: '/', icon: <DashboardOutlined />, label: <Link href="/">Tổng quan</Link> },
-    { key: '/teachers', icon: <IdcardOutlined />, label: <Link href="/teachers">Giáo viên</Link> },
+    {
+      key: 'staffing',
+      icon: <IdcardOutlined />,
+      label: 'Cán bộ, giáo viên',
+      children: [
+        { key: '/teachers', label: <Link href="/teachers">Hồ sơ giáo viên</Link> },
+        { key: '/teaching/assignments', label: <Link href="/teaching/assignments">Phân công giảng dạy</Link> },
+        { key: '/teaching/homeroom', label: <Link href="/teaching/homeroom">Phân công chủ nhiệm</Link> },
+        { key: '/teaching/duties', label: <Link href="/teaching/duties">Kiêm nhiệm & định mức</Link> },
+        { key: '/teaching/calendar', label: <Link href="/teaching/calendar">Lịch báo giảng</Link> },
+      ],
+    },
     {
       key: 'students',
       icon: <UserOutlined />,
@@ -74,7 +85,15 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
       ],
     },
     ...(staff ? [{ key: '/parents', icon: <UsergroupAddOutlined />, label: <Link href="/parents">Tài khoản phụ huynh</Link> }] : []),
-    { key: '/classes', icon: <ApartmentOutlined />, label: <Link href="/classes">Lớp học</Link> },
+    {
+      key: 'classes',
+      icon: <ApartmentOutlined />,
+      label: 'Lớp học',
+      children: [
+        { key: '/classes', label: <Link href="/classes">Danh sách lớp</Link> },
+        { key: '/classes/book', label: <Link href="/classes/book">Sổ chủ nhiệm</Link> },
+      ],
+    },
     { key: '/schedules', icon: <CalendarOutlined />, label: <Link href="/schedules">Thời khóa biểu</Link> },
     {
       key: 'attendance',

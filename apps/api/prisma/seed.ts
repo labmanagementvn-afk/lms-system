@@ -25,6 +25,7 @@ import { seedParents } from './seed/parents';
 import { seedSms } from './seed/sms';
 import { seedStudentRecords } from './seed/student-records';
 import { seedStudentAccounts } from './seed/students';
+import { seedTeaching } from './seed/teaching';
 
 const prisma = new PrismaClient();
 // The services seeders call log each sandbox send and each refusal they stage; print only real errors.
@@ -255,6 +256,8 @@ async function main() {
   for (const seed of [seedSms, seedMoetSync, seedERecords]) await seed(prisma, ctx);
   // Phase 9: student records, movements, commendations and discipline, and leave requests.
   await seedStudentRecords(prisma, ctx);
+  // Phase 10: tổ chuyên môn, chức vụ and kiêm nhiệm, phân công giảng dạy, the lịch báo giảng and 6A1's sổ chủ nhiệm.
+  await seedTeaching(prisma, ctx);
 }
 
 /**
@@ -297,6 +300,11 @@ async function topUp(schoolId: string) {
     if (!(await prisma.studentMovement.findFirst({ where: { schoolId }, select: { id: true } })) && !(await prisma.absenceRequest.findFirst({ where: { schoolId }, select: { id: true } }))) {
       await seedStudentRecords(prisma, ctx);
       console.log('Demo school: added student records, movements, commendations, discipline and leave requests (phase 9).');
+      added = true;
+    }
+    if (!(await prisma.teachingAssignment.findFirst({ where: { schoolId }, select: { id: true } })) && !(await prisma.homeroomBook.findFirst({ where: { schoolId }, select: { id: true } }))) {
+      await seedTeaching(prisma, ctx);
+      console.log('Demo school: added tổ chuyên môn, duties, teaching assignments, the lịch báo giảng and the sổ chủ nhiệm of 6A1 (phase 10).');
       added = true;
     }
     if (!added) console.log('Demo school already exists; nothing to do.');

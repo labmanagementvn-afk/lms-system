@@ -35,6 +35,7 @@ import { StatsModule } from './stats/stats.module';
 import { StudentsModule } from './students/students.module';
 import { StoreModule } from './store/store.module';
 import { SubjectsModule } from './subjects/subjects';
+import { TeachingModule } from './teaching/teaching.module';
 import { TeachersModule } from './teachers/teachers.module';
 import { UploadsModule } from './uploads/uploads.module';
 
@@ -84,6 +85,8 @@ import { UploadsModule } from './uploads/uploads.module';
     // Phase 8
     SmsModule,
     EsignModule,
+    // Phase 10
+    TeachingModule,
   ],
 })
 export class AppModule {}

@@ -403,3 +403,22 @@ export function leaveDays(r: { fromDate: string; toDate: string; session: string
   const days = r.fromDate === r.toDate ? dmy(r.fromDate) : `${dmy(r.fromDate)} – ${dmy(r.toDate)}`;
   return r.session ? `${SESSION[r.session]} ${days}` : `${days} (cả ngày)`;
 }
+
+// ---- Phase 10: phân công chuyên môn, kiêm nhiệm, định mức tiết dạy, lịch báo giảng, sổ chủ nhiệm ----
+
+export const DUTY_KIND: Record<string, { label: string; color: string }> = {
+  POSITION: { label: 'Chức vụ', color: 'purple' },
+  CONCURRENT: { label: 'Kiêm nhiệm', color: 'blue' },
+  OTHER: { label: 'Chế độ khác', color: 'default' },
+};
+export const NOTE_KIND: Record<string, { label: string; color: string }> = {
+  ATTENTION: { label: 'Cần quan tâm, giúp đỡ', color: 'orange' },
+  OUTSTANDING: { label: 'Có thành tích nổi bật', color: 'green' },
+  PROGRESS: { label: 'Có tiến bộ', color: 'blue' },
+  OTHER: { label: 'Khác', color: 'default' },
+};
+/** Ban cán sự lớp, Ban chỉ huy chi đội and Ban đại diện cha mẹ học sinh roles to pick from (any other may be typed). */
+export const OFFICER_ROLES = ['Lớp trưởng', 'Lớp phó học tập', 'Lớp phó văn thể mỹ', 'Lớp phó lao động', 'Lớp phó kỷ luật', 'Thủ quỹ', 'Chi đội trưởng', 'Chi đội phó', 'Bí thư chi đoàn', 'Phó bí thư chi đoàn'];
+export const COMMITTEE_ROLES = ['Trưởng ban', 'Phó trưởng ban', 'Ủy viên'];
+/** "4", "1,5": periods with a decimal comma. */
+export const periods = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(Math.round(n * 10) / 10).replace('.', ','));

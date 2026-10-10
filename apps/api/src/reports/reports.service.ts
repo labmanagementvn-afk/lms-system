@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Cell, Letterhead, ReportColumn, ReportDocument, slug, table, text } from './document';
 import { ReportQuery } from './reports.dto';
 
-export type ReportParam = 'classId' | 'subjectId' | 'studentId' | 'semester' | 'term' | 'gradeLevel' | 'from' | 'to' | 'status' | 'promotion' | 'round';
+export type ReportParam = 'classId' | 'subjectId' | 'studentId' | 'teacherId' | 'semester' | 'term' | 'gradeLevel' | 'from' | 'to' | 'week' | 'status' | 'promotion' | 'round';
 
 export interface ReportDef {
   key: string;
@@ -627,11 +627,13 @@ export const PARAM_LABEL: Record<ReportParam, string> = {
   classId: 'lớp',
   subjectId: 'môn học',
   studentId: 'học sinh',
+  teacherId: 'giáo viên',
   semester: 'học kỳ',
   term: 'học kỳ hoặc cả năm',
   gradeLevel: 'khối',
   from: 'từ ngày',
   to: 'đến ngày',
+  week: 'tuần',
   status: 'tình trạng',
   promotion: 'kết quả lên lớp',
   round: 'đợt xét',

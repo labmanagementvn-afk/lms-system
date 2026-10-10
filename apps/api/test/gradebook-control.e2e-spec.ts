@@ -302,6 +302,10 @@ describe('Gradebook control and reports (e2e)', () => {
         'policy-students': {},
         'student-awards': { from: '2026-09-01', to: '2026-10-31' },
         'student-discipline': { from: '2026-09-01', to: '2026-10-31' },
+        'teaching-assignments': { semester: 1 },
+        'teaching-by-class': { semester: 1 },
+        'lesson-calendar': { teacherId, week: '2026-10-05' },
+        'homeroom-book': { classId },
       };
       const catalogue = await api().get('/api/v1/reports').set(admin()).expect(200);
       // The end-of-year documents need a summer review and a decision to print: end-of-year.e2e builds them.

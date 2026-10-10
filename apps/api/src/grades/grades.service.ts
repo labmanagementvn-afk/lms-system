@@ -159,6 +159,13 @@ export class GradesService {
     return this.buildBook(schoolId, klass, subject, query.semester);
   }
 
+  /** The gradebook as the caller sees it: with who is assigned to teach it and whether the caller may write it. */
+  async bookFor(user: AuthUser, query: BookQuery) {
+    const book = await this.book(user.schoolId, query);
+    const assignment = await this.control.assignment(user, { academicYearId: book.class.academicYearId, semester: query.semester, classId: book.class.id, subjectId: book.subject.id });
+    return { ...book, assignment };
+  }
+
   private async buildBook(schoolId: string, klass: ClassRef, subject: SubjectRef, semester: number) {
     const [setting, locked, roster, scores, columnLocks, window, exemptions] = await Promise.all([
       this.settingOf(schoolId, subject.id),

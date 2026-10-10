@@ -11,6 +11,7 @@ K-12 school platform with a Vietnamese web portal.
 - **Phase 7**: the summer review (retakes and summer training), the THCS completion review and award certificates.
 - **Phase 8**: SMS to parents and teachers with templates, quotas and scheduling, direct sync with the education databases, and the học bạ số signed digitally by the homeroom teacher and the principal.
 - **Phase 9**: the full student record and family, student movements with the sổ đăng bộ and the transfer letter, commendation and discipline under Thông tư 19/2025, and leave requests from parents decided by the homeroom teacher.
+- **Phase 10**: teaching and homeroom assignments, positions and concurrent duties with the teaching norm of Thông tư 05/2025, the lịch báo giảng, and the sổ chủ nhiệm.
 
 | Part | Stack | Folder |
 |---|---|---|
@@ -114,6 +115,13 @@ The SMS gateway, the education databases and the signing services run against **
 - **Biến động học sinh**: tuyển mới and chuyển đến on entry, chuyển lớp with the year's marks following the student, chuyển đi, thôi học and trở lại học, each dated with its reason; the sổ đăng bộ, the list of movements and the giấy giới thiệu chuyển trường as reports.
 - **Khen thưởng, kỷ luật**: the commendation forms and discipline measures of Thông tư 19/2025/TT-BGDĐT, checked against the violation level, the student's earlier measures and who records them; families are told and confirm a self-review in the parent app.
 - **Đơn xin nghỉ học**: parents ask in the app for days or a session off, the homeroom teacher approves or declines, phoned-in requests are recorded, and approved days show as có phép on the roll call. See [docs/student-records.md](docs/student-records.md).
+
+### Phase 10
+
+- **Phân công giảng dạy**: who teaches each subject in each class per semester, with periods a week and shared subjects, made from the timetable or copied from the first semester and checked against it; once a semester has assignments, teachers enter marks only where they are assigned. Teachers belong to a tổ chuyên môn.
+- **Phân công chủ nhiệm, kiêm nhiệm và định mức**: the homeroom teacher of every class, the positions and concurrent duties of Thông tư 05/2025/TT-BGDĐT from a catalogue the school edits, and each teacher's norm, reductions, assigned periods and difference, with the circular's limits checked; the bảng phân công chuyên môn as a report.
+- **Lịch báo giảng**: each teacher's week from the timetable with the lesson, teaching aids and notes of every period, printed, shown on the teacher's dashboard and carried into the sổ đầu bài.
+- **Sổ chủ nhiệm**: the homeroom teacher's book of the class, with subject teachers, students and families, the class's situation, officers and parents' committee, tổ and seating chart, year and month plans, students followed, parent meetings, results and attendance, and the leaders' review, printed as one book. See [docs/teaching-homeroom-book.md](docs/teaching-homeroom-book.md).
 
 Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT`, `DRIVER` and `STUDENT` only reach the parent, driver and student apps; `DISTRICT` only reaches the district portal.
 

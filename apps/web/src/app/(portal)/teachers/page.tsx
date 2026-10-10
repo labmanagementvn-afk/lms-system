@@ -1,22 +1,25 @@
 'use client';
 
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import { App, Button, DatePicker, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
+import { App, AutoComplete, Button, DatePicker, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import dayjs from 'dayjs';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { PageHeader } from '@/components/PageHeader';
 import { api, clean } from '@/lib/api';
 import { canManage, useAuth } from '@/lib/auth';
-import { useSubjects } from '@/lib/hooks';
+import { useAllTeachers, useSubjects } from '@/lib/hooks';
 import { GENDER, options, TEACHER_STATUS } from '@/lib/labels';
 
 export default function TeachersPage() {
   const { me } = useAuth();
   const { message } = App.useApp();
-  const [query, setQuery] = useState({ page: 1, pageSize: 20, q: '', status: undefined as string | undefined, subjectId: undefined as string | undefined });
+  const [query, setQuery] = useState({ page: 1, pageSize: 20, q: '', status: undefined as string | undefined, subjectId: undefined as string | undefined, subjectGroup: undefined as string | undefined });
   const { data, isLoading, mutate } = useSWR<any>(['/teachers', query]);
   const { data: subjects } = useSubjects();
+  const { data: all, mutate: mutateAll } = useAllTeachers();
+  // Tổ chuyên môn the school already uses, for the filter and to pick from when editing.
+  const groups = useMemo(() => [...new Set((all?.items ?? []).map((t) => t.subjectGroup).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'vi')), [all]);
   const [editing, setEditing] = useState<any | null>(null);
   const [form] = Form.useForm();
   const admin = canManage(me);
@@ -37,12 +40,15 @@ export default function TeachersPage() {
     const values = await form.validateFields();
     const body: any = clean({ ...values, dateOfBirth: values.dateOfBirth?.format('YYYY-MM-DD') });
     if (!body.password) delete body.password;
+    // An emptied tổ chuyên môn is sent as null so it is cleared.
+    body.subjectGroup = values.subjectGroup?.trim() || null;
     try {
       if (editing?.id) await api(`/teachers/${editing.id}`, { method: 'PATCH', body });
       else await api('/teachers', { method: 'POST', body });
       message.success('Đã lưu giáo viên');
       setEditing(null);
       mutate();
+      mutateAll();
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -80,18 +86,26 @@ export default function TeachersPage() {
           style={{ width: 200 }}
           onChange={(subjectId) => setQuery({ ...query, subjectId, page: 1 })}
         />
+        <Select
+          placeholder="Tổ chuyên môn"
+          allowClear
+          options={groups.map((g) => ({ value: g, label: g }))}
+          style={{ width: 260 }}
+          onChange={(subjectGroup) => setQuery({ ...query, subjectGroup, page: 1 })}
+        />
       </Space>
       <Table<any>
         rowKey="id"
         loading={isLoading}
         dataSource={data?.items}
-        scroll={{ x: 900 }}
+        scroll={{ x: 1100 }}
         pagination={{ current: query.page, pageSize: query.pageSize, total: data?.total, onChange: (page, pageSize) => setQuery({ ...query, page, pageSize }) }}
         columns={[
           { title: 'Mã GV', dataIndex: 'code', width: 100 },
           { title: 'Họ và tên', dataIndex: 'fullName' },
           { title: 'Giới tính', dataIndex: 'gender', width: 90, render: (g) => GENDER[g] ?? '' },
           { title: 'Điện thoại', dataIndex: 'phone', width: 130 },
+          { title: 'Tổ chuyên môn', dataIndex: 'subjectGroup', render: (g) => g ?? '' },
           { title: 'Môn dạy', render: (_, r) => r.subjects.map((s: any) => <Tag key={s.subjectId}>{s.subject.name}</Tag>) },
           { title: 'Chủ nhiệm', render: (_, r) => r.homeroomClasses.map((c: any) => c.name).join(', ') },
           { title: 'Tài khoản', render: (_, r) => (r.user ? r.user.email : <Tag>Chưa có</Tag>) },
@@ -143,6 +157,9 @@ export default function TeachersPage() {
               <Select options={options(TEACHER_STATUS)} style={{ width: 160 }} />
             </Form.Item>
           </Space>
+          <Form.Item name="subjectGroup" label="Tổ chuyên môn">
+            <AutoComplete options={groups.map((g) => ({ value: g }))} placeholder="Tổ Toán - Khoa học tự nhiên" filterOption={(input, o) => !!o?.value.toLowerCase().includes(input.toLowerCase())} allowClear />
+          </Form.Item>
           <Form.Item name="subjectIds" label="Môn dạy">
             <Select mode="multiple" options={subjects?.map((s) => ({ value: s.id, label: s.name }))} />
           </Form.Item>

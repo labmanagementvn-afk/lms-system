@@ -141,6 +141,17 @@ model School {
   studentDisciplines StudentDiscipline[]
   absenceRequests    AbsenceRequest[]
 
+  dutyTypes           DutyType[]
+  teacherDuties       TeacherDuty[]
+  teachingAssignments TeachingAssignment[]
+  workloadSetting     WorkloadSetting?
+  lessonPlans         LessonPlan[]
+  homeroomBooks       HomeroomBook[]
+  homeroomMonthPlans  HomeroomMonthPlan[]
+  parentMeetings      ParentMeeting[]
+  studentNotes        StudentNote[]
+  homeroomBookReviews HomeroomBookReview[]
+
   users         User[]
   teachers      Teacher[]
   students      Student[]
@@ -271,6 +282,9 @@ model Subject {
   exemptions     SubjectExemption[]
   retakes        SubjectRetake[]
 
+  assignments TeachingAssignment[]
+  lessonPlans LessonPlan[]
+
   @@unique([schoolId, code])
 }
 
@@ -288,6 +302,9 @@ model Teacher {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  /// Tổ chuyên môn: "Tổ Toán - Khoa học tự nhiên".
+  subjectGroup String?
+
   school          School               @relation(fields: [schoolId], references: [id])
   user            User?                @relation(fields: [userId], references: [id])
   subjects        TeacherSubject[]
@@ -300,6 +317,10 @@ model Teacher {
   employee        Employee?
   scores          Score[]
   courses         Course[]
+
+  duties      TeacherDuty[]
+  assignments TeachingAssignment[]
+  lessonPlans LessonPlan[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -396,6 +417,8 @@ model Student {
   disciplines     StudentDiscipline[]
   absenceRequests AbsenceRequest[]
 
+  notes StudentNote[]
+
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
 }
@@ -448,6 +471,9 @@ model AcademicYear {
   conductAssessments ConductAssessment[]
   courses            Course[]
 
+  teacherDuties       TeacherDuty[]
+  teachingAssignments TeachingAssignment[]
+
   @@unique([schoolId, name])
 }
 
@@ -485,6 +511,14 @@ model Class {
   awards          StudentAward[]
   disciplines     StudentDiscipline[]
   absenceRequests AbsenceRequest[]
+
+  assignments    TeachingAssignment[]
+  lessonPlans    LessonPlan[]
+  homeroomBook   HomeroomBook?
+  monthPlans     HomeroomMonthPlan[]
+  parentMeetings ParentMeeting[]
+  studentNotes   StudentNote[]
+  bookReviews    HomeroomBookReview[]
 
   @@unique([academicYearId, name])
   @@index([schoolId])
@@ -3381,4 +3415,246 @@ model AbsenceRequest {
   @@index([schoolId, status])
   @@index([classId, fromDate])
   @@index([studentId, fromDate])
+}
+
+// ---- Phase 10: phân công chuyên môn, kiêm nhiệm and định mức tiết dạy (Thông tư 05/2025/TT-BGDĐT), lịch báo giảng, sổ chủ nhiệm ----
+
+/// How a position or duty changes a teacher's weekly teaching norm (Thông tư 05/2025/TT-BGDĐT).
+enum DutyKind {
+  /// A position with a norm of its own (Điều 7, 8): hiệu trưởng, phó hiệu trưởng, Tổng phụ trách Đội.
+  POSITION
+  /// A concurrent duty that lowers the norm (Điều 9, 10, 11). A teacher holds at most two, a homeroom class included (Điều 3).
+  CONCURRENT
+  /// Another reduction that is not a duty (Điều 12): tập sự, nuôi con dưới 12 tháng.
+  OTHER
+}
+
+/// Danh mục chức vụ, kiêm nhiệm of a school: the periods a week each one sets or takes off.
+model DutyType {
+  id        String   @id @default(cuid())
+  schoolId  String
+  code      String
+  name      String
+  kind      DutyKind
+  /// The weekly norm a POSITION sets, or the periods a week a CONCURRENT or OTHER duty takes off.
+  periods   Decimal  @db.Decimal(4, 1)
+  /// Where the number comes from: "Điều 9 Thông tư 05/2025/TT-BGDĐT".
+  basis     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school School        @relation(fields: [schoolId], references: [id])
+  duties TeacherDuty[]
+
+  @@unique([schoolId, code])
+}
+
+/// Phân công kiêm nhiệm: a position or duty a teacher holds in a school year, or in one semester of it.
+model TeacherDuty {
+  id             String   @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  teacherId      String
+  dutyTypeId     String
+  /// 1 or 2; null for the whole year.
+  semester       Int?
+  /// Replaces the catalogue's periods for this teacher (in charge of two subject rooms: 3 periods for each).
+  periods        Decimal? @db.Decimal(4, 1)
+  /// "Tổ Toán - Khoa học tự nhiên", "Phòng thực hành Khoa học tự nhiên".
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  teacher      Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  dutyType     DutyType     @relation(fields: [dutyTypeId], references: [id])
+
+  @@index([schoolId, academicYearId])
+  @@index([teacherId, academicYearId])
+}
+
+/// Phân công giảng dạy: who teaches a subject in a class in a semester, and how many periods a week.
+/// Two teachers may share a subject (the parts of Khoa học tự nhiên), each with their own periods.
+model TeachingAssignment {
+  id             String   @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  classId        String
+  subjectId      String
+  teacherId      String
+  periodsPerWeek Decimal  @db.Decimal(4, 1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  class        Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher      Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, subjectId, semester, teacherId])
+  @@index([academicYearId, semester, teacherId])
+}
+
+/// Định mức tiết dạy of a school when it differs from the circular's defaults for its level.
+model WorkloadSetting {
+  schoolId          String   @id
+  /// Periods a week a teacher teaches (Điều 7): 23 tiểu học, 19 THCS, 17 THPT.
+  teacherNorm       Decimal  @db.Decimal(4, 1)
+  /// Periods a week a homeroom teacher is relieved of (Điều 9): 4.
+  homeroomReduction Decimal  @db.Decimal(4, 1)
+  updatedAt         DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+/// Lịch báo giảng: the lesson a teacher plans for one period of a week.
+model LessonPlan {
+  id           String   @id @default(cuid())
+  schoolId     String
+  teacherId    String
+  classId      String
+  subjectId    String
+  date         DateTime @db.Date
+  periodNumber Int
+  /// Tiết theo kế hoạch dạy học (phân phối chương trình) of the subject.
+  lessonNo     Int?
+  /// Tên bài dạy.
+  title        String
+  /// Đồ dùng dạy học.
+  aids         String?
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, date, periodNumber])
+  @@index([classId, date])
+}
+
+/// Sổ chủ nhiệm of a class: officers, the parents' committee, groups, the seating chart and the year's plan.
+/// Lists refer to students and guardians by id; those who left the class drop out when the book is read.
+model HomeroomBook {
+  id              String   @id @default(cuid())
+  schoolId        String
+  classId         String   @unique
+  /// Ban cán sự lớp: [{ role, studentId }].
+  officers        Json     @default("[]")
+  /// Ban đại diện cha mẹ học sinh: [{ role, guardianId }].
+  parentCommittee Json     @default("[]")
+  /// Tổ: [{ name, leaderId, studentIds }].
+  groups          Json     @default("[]")
+  /// Sơ đồ chỗ ngồi: { columns, rows, seatsPerDesk, seats } with seats[row][column * seatsPerDesk + seat], row 0 at the board.
+  seating         Json?
+  /// Kế hoạch chủ nhiệm năm học: { situation, goals, targets, measures }.
+  yearPlan        Json?
+  updatedById     String?
+  updatedAt       DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+}
+
+/// Kế hoạch chủ nhiệm tháng: the month's theme, the work planned and, at the end, how it went.
+model HomeroomMonthPlan {
+  id        String   @id @default(cuid())
+  schoolId  String
+  classId   String
+  /// First day of the month.
+  month     DateTime @db.Date
+  /// Chủ điểm of the month.
+  theme     String?
+  tasks     String
+  /// Đánh giá kết quả at the end of the month.
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, month])
+}
+
+/// Họp cha mẹ học sinh: the minutes of one meeting of the class's parents.
+model ParentMeeting {
+  id          String   @id @default(cuid())
+  schoolId    String
+  classId     String
+  date        DateTime @db.Date
+  title       String
+  /// Parents present out of those invited.
+  attended    Int?
+  invited     Int?
+  content     String
+  /// Ý kiến của cha mẹ học sinh.
+  opinions    String?
+  /// Kết luận, thống nhất.
+  conclusions String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId, date])
+}
+
+enum StudentNoteKind {
+  /// Cần quan tâm, giúp đỡ.
+  ATTENTION
+  /// Tiêu biểu, năng khiếu.
+  OUTSTANDING
+  /// Tiến bộ.
+  PROGRESS
+  OTHER
+}
+
+/// Theo dõi học sinh: what the homeroom teacher noticed about a student, what was done and how it went.
+model StudentNote {
+  id          String          @id @default(cuid())
+  schoolId    String
+  classId     String
+  studentId   String
+  date        DateTime        @db.Date
+  kind        StudentNoteKind
+  content     String
+  /// Biện pháp giáo dục, giúp đỡ.
+  action      String?
+  result      String?
+  createdById String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([classId, date])
+  @@index([studentId])
+}
+
+/// Ý kiến của Hiệu trưởng: a school leader's remarks when checking the sổ chủ nhiệm.
+model HomeroomBookReview {
+  id        String   @id @default(cuid())
+  schoolId  String
+  classId   String
+  date      DateTime @db.Date
+  content   String
+  authorId  String
+  createdAt DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId, date])
 }
