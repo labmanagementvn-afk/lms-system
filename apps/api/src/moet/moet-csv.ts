@@ -5,7 +5,7 @@ import { CsvCell, parseCsv, serializeCsv } from '../admissions/csv';
 
 /** Column headers of each export, in the order CSDL ngành import templates list them. */
 export const MOET_COLUMNS: Record<MoetExportKind, string[]> = {
-  STUDENTS: ['Mã trường', 'Mã học sinh', 'Họ và tên', 'Ngày sinh', 'Giới tính', 'Khối', 'Lớp', 'Trạng thái', 'Địa chỉ', 'Họ tên người giám hộ', 'Quan hệ', 'Điện thoại người giám hộ'],
+  STUDENTS: ['Mã trường', 'Mã học sinh', 'Họ và tên', 'Ngày sinh', 'Giới tính', 'Khối', 'Lớp', 'Trạng thái', 'Địa chỉ', 'Họ tên người giám hộ', 'Quan hệ', 'Điện thoại người giám hộ', 'Mã định danh', 'Dân tộc', 'Nơi sinh', 'Quê quán'],
   TEACHERS: ['Mã trường', 'Mã giáo viên', 'Họ và tên', 'Ngày sinh', 'Giới tính', 'Điện thoại', 'Email', 'Trạng thái', 'Môn giảng dạy'],
   CLASSES: ['Mã trường', 'Năm học', 'Khối', 'Lớp', 'Phòng học', 'Mã GVCN', 'Giáo viên chủ nhiệm', 'Sĩ số'],
   TERM_RESULTS: ['Mã trường', 'Năm học', 'Học kỳ', 'Lớp', 'Mã học sinh', 'Họ và tên', 'Kết quả học tập', 'Kết quả rèn luyện', 'Danh hiệu', 'Lên lớp', 'Số ngày nghỉ'],
@@ -37,6 +37,10 @@ export interface StudentExportRow {
   status: StudentStatus;
   address: string | null;
   guardian: { fullName: string; relationship: string; phone: string } | null;
+  idNumber: string | null;
+  ethnicity: string | null;
+  birthPlace: string | null;
+  hometown: string | null;
 }
 
 export function studentRow(s: StudentExportRow): CsvCell[] {
@@ -53,6 +57,10 @@ export function studentRow(s: StudentExportRow): CsvCell[] {
     s.guardian?.fullName ?? '',
     s.guardian ? (RELATIONSHIP_VI[s.guardian.relationship] ?? s.guardian.relationship) : '',
     s.guardian?.phone ?? '',
+    s.idNumber ?? '',
+    s.ethnicity ?? '',
+    s.birthPlace ?? '',
+    s.hometown ?? '',
   ];
 }
 
@@ -137,6 +145,10 @@ export interface ImportedStudent {
   status: StudentStatus | null;
   address: string | null;
   guardian: { fullName: string; relationship: string; phone: string } | null;
+  idNumber: string | null;
+  ethnicity: string | null;
+  birthPlace: string | null;
+  hometown: string | null;
 }
 
 export interface ImportParse {
@@ -169,6 +181,10 @@ const HEADER_ALIASES: Record<string, string[]> = {
   guardianName: ['ho ten nguoi giam ho', 'nguoi giam ho', 'ho ten phu huynh', 'phu huynh', 'guardian', 'guardian name'],
   relationship: ['quan he', 'relationship'],
   guardianPhone: ['dien thoai nguoi giam ho', 'dien thoai phu huynh', 'so dien thoai', 'dien thoai', 'phone', 'guardian phone'],
+  idNumber: ['ma dinh danh', 'ma dinh danh ca nhan', 'so dinh danh', 'so cccd', 'cccd', 'id number'],
+  ethnicity: ['dan toc', 'ethnicity'],
+  birthPlace: ['noi sinh', 'place of birth', 'birthplace'],
+  hometown: ['que quan', 'hometown'],
 };
 
 export function mapHeaders(header: string[]): Record<string, number> {
@@ -250,6 +266,8 @@ export function parseStudentImport(text: string): ImportParse {
     const guardianName = cell(r, 'guardianName');
     const guardianPhone = cell(r, 'guardianPhone').replace(/[\s.]/g, '');
     if (guardianPhone && !/^0\d{9,10}$/.test(guardianPhone)) return void errors.push({ line, message: `Số điện thoại không hợp lệ: "${cell(r, 'guardianPhone')}"` });
+    const idNumber = cell(r, 'idNumber').replace(/\s/g, '');
+    if (idNumber && !/^\d{12}$/.test(idNumber)) return void errors.push({ line, message: `Mã định danh phải gồm 12 chữ số: "${cell(r, 'idNumber')}"` });
     rows.push({
       line,
       code,
@@ -260,6 +278,10 @@ export function parseStudentImport(text: string): ImportParse {
       status,
       address: cell(r, 'address') || null,
       guardian: guardianName && guardianPhone ? { fullName: guardianName, relationship: parseRelationship(cell(r, 'relationship')), phone: guardianPhone } : null,
+      idNumber: idNumber || null,
+      ethnicity: cell(r, 'ethnicity') || null,
+      birthPlace: cell(r, 'birthPlace') || null,
+      hometown: cell(r, 'hometown') || null,
     });
   });
   return { rows, errors };
@@ -268,6 +290,6 @@ export function parseStudentImport(text: string): ImportParse {
 /** The import template: the student header plus one example row. */
 export function studentImportTemplate(moetCode: string): string {
   const header = MOET_COLUMNS.STUDENTS;
-  const example: CsvCell[] = [moetCode, 'HS2026031', 'Nguyễn Văn An', '15/03/2015', 'Nam', 6, '6A1', 'Đang học', 'Hà Nội', 'Nguyễn Văn Bình', 'Bố', '0912345678'];
+  const example: CsvCell[] = [moetCode, 'HS2026031', 'Nguyễn Văn An', '15/03/2015', 'Nam', 6, '6A1', 'Đang học', 'Hà Nội', 'Nguyễn Văn Bình', 'Bố', '0912345678', '001215012345', 'Kinh', 'Hà Nội', 'Nam Định'];
   return buildCsv(header, [example]);
 }

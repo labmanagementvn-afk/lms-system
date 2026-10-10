@@ -1,7 +1,9 @@
 'use client';
 
-import { Card, DatePicker, Empty, List, Spin, Statistic, Tag, Typography } from 'antd';
+import { FileDoneOutlined } from '@ant-design/icons';
+import { Button, Card, DatePicker, Empty, List, Spin, Statistic, Tag, Typography } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
+import Link from 'next/link';
 import { useState } from 'react';
 import useSWR from 'swr';
 import { useAuth } from '@/lib/auth';
@@ -33,6 +35,11 @@ export default function ParentAttendancePage() {
         <Typography.Text strong>Điểm danh · {child.fullName}</Typography.Text>
         <DatePicker picker="month" value={month} onChange={(d) => d && setMonth(d)} format="MM/YYYY" allowClear={false} />
       </div>
+      <Link href="/parent/leave">
+        <Button block icon={<FileDoneOutlined />}>
+          Xin cho con nghỉ học
+        </Button>
+      </Link>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
         {[
           ['Có mặt', s?.present, '#16a34a'],

@@ -25,13 +25,13 @@ export class StudentsController {
   @Roles(Role.ADMIN, Role.STAFF)
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateStudentDto) {
-    return this.service.create(user.schoolId, dto);
+    return this.service.create(user, dto);
   }
 
   @Roles(Role.ADMIN, Role.STAFF)
   @Patch(':id')
   update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateStudentDto) {
-    return this.service.update(user.schoolId, id, dto);
+    return this.service.update(user, id, dto);
   }
 
   @Roles(Role.ADMIN)

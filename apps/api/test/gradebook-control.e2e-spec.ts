@@ -297,11 +297,17 @@ describe('Gradebook control and reports (e2e)', () => {
         'missing-scores': { classId, semester: 1 },
         'score-edits': { semester: 1 },
         'sms-usage': { from: '2026-09-01', to: '2026-10-31' },
+        'student-register': {},
+        'student-movements': { from: '2026-09-01', to: '2026-10-31' },
+        'policy-students': {},
+        'student-awards': { from: '2026-09-01', to: '2026-10-31' },
+        'student-discipline': { from: '2026-09-01', to: '2026-10-31' },
       };
       const catalogue = await api().get('/api/v1/reports').set(admin()).expect(200);
       // The end-of-year documents need a summer review and a decision to print: end-of-year.e2e builds them.
       const endOfYear = ['Cuối năm học', 'Hoàn thành chương trình THCS'];
-      for (const { key } of catalogue.body.filter((r: any) => !endOfYear.includes(r.group))) {
+      // A transfer letter needs a student who transferred out: student-records.e2e prints it.
+      for (const { key } of catalogue.body.filter((r: any) => !endOfYear.includes(r.group) && r.key !== 'transfer-letter')) {
         expect(params[key]).toBeDefined();
         const json = await api().get(`/api/v1/reports/${key}`).query(params[key]).set(admin());
         expect([key, json.status]).toEqual([key, 200]);

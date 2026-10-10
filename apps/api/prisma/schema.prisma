@@ -136,6 +136,11 @@ model School {
   moetSyncs    MoetSync[]
   eRecords     ERecord[]
 
+  studentMovements   StudentMovement[]
+  studentAwards      StudentAward[]
+  studentDisciplines StudentDiscipline[]
+  absenceRequests    AbsenceRequest[]
+
   users         User[]
   teachers      Teacher[]
   students      Student[]
@@ -324,6 +329,28 @@ model Student {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  // Phase 9: the rest of the student record, as the sổ đăng bộ and CSDL ngành ask for it.
+  /// Mã định danh cá nhân: the 12-digit number of the citizen ID (CCCD, VNeID).
+  idNumber          String?
+  /// The student's code in CSDL ngành.
+  moetCode          String?
+  birthPlace        String?
+  hometown          String?
+  ethnicity         String?
+  religion          String?
+  nationality       String?       @default("Việt Nam")
+  /// Chỗ ở hiện nay: `address` keeps the house number and street, these the ward and province.
+  currentWard       String?
+  currentProvince   String?
+  /// Nơi thường trú.
+  permanentAddress  String?
+  permanentWard     String?
+  permanentProvince String?
+  policyGroups      PolicyGroup[] @default([])
+  /// Đội viên of the Đội TNTP Hồ Chí Minh, đoàn viên of the Đoàn TNCS Hồ Chí Minh.
+  youngPioneer      Boolean       @default(false)
+  youthUnion        Boolean       @default(false)
+
   school      School               @relation(fields: [schoolId], references: [id])
   user        User?                @relation(fields: [userId], references: [id])
   guardians   Guardian[]
@@ -364,6 +391,11 @@ model Student {
   completionRecords  CompletionRecord[]
   eRecords           ERecord[]
 
+  movements       StudentMovement[]
+  awards          StudentAward[]
+  disciplines     StudentDiscipline[]
+  absenceRequests AbsenceRequest[]
+
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
 }
@@ -378,6 +410,11 @@ model Guardian {
   isPrimary    Boolean              @default(false)
   // Parent login account; one account covers every child with the same phone.
   userId       String?
+  // Phase 9: what the sổ đăng bộ and CSDL ngành record of the parents.
+  birthYear    Int?
+  occupation   String?
+  /// Số CCCD.
+  idNumber     String?
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id])
@@ -442,6 +479,12 @@ model Class {
   summerTrainings    SummerTraining[]
   completionRecords  CompletionRecord[]
   smsQuota           SmsClassQuota?
+
+  movementsFrom   StudentMovement[]   @relation("MovementFrom")
+  movementsTo     StudentMovement[]   @relation("MovementTo")
+  awards          StudentAward[]
+  disciplines     StudentDiscipline[]
+  absenceRequests AbsenceRequest[]
 
   @@unique([academicYearId, name])
   @@index([schoolId])
@@ -1199,6 +1242,11 @@ enum NotificationKind {
   TEST_ASSIGNED
   LIVE_CLASS
   ALERT
+  // Phase 9
+  ABSENCE_REQUEST
+  ABSENCE_DECIDED
+  STUDENT_AWARD
+  STUDENT_DISCIPLINE
 }
 
 enum AnnouncementStatus {
@@ -3157,4 +3205,180 @@ model ERecord {
 
   @@unique([studentId, academicYearId, kind, version])
   @@index([schoolId, academicYearId, classId])
+}
+
+// ---- Phase 9: the student record: profile, movements, commendation and discipline, leave requests ----
+
+/// Đối tượng chính sách the school reports on.
+enum PolicyGroup {
+  /// Con liệt sĩ.
+  MARTYR_CHILD
+  /// Con thương binh, bệnh binh or of those treated as such.
+  WAR_INVALID_CHILD
+  /// Hộ nghèo.
+  POOR_HOUSEHOLD
+  /// Hộ cận nghèo.
+  NEAR_POOR_HOUSEHOLD
+  /// Living in an area of extreme hardship (vùng đặc biệt khó khăn).
+  HARDSHIP_AREA
+  /// Khuyết tật.
+  DISABILITY
+  /// Mồ côi.
+  ORPHAN
+}
+
+enum MovementKind {
+  /// Tuyển mới: admitted at the start of the level.
+  ENROLLED
+  /// Chuyển đến from another school.
+  TRANSFER_IN
+  /// Chuyển lớp within the school year.
+  CLASS_CHANGE
+  /// Chuyển đi to another school.
+  TRANSFER_OUT
+  /// Thôi học.
+  DROPPED
+  /// Trở lại học after leaving.
+  RETURNED
+}
+
+/// A change in a student's enrolment (biến động): what the sổ đăng bộ and the transfer lists print.
+model StudentMovement {
+  id             String       @id @default(cuid())
+  schoolId       String
+  studentId      String
+  kind           MovementKind
+  date           DateTime     @db.Date
+  academicYearId String?
+  fromClassId    String?
+  toClassId      String?
+  /// The other school of a transfer in or out.
+  otherSchool    String?
+  reason         String?
+  /// Number of the decision or letter behind it.
+  documentNo     String?
+  createdById    String
+  createdAt      DateTime     @default(now())
+
+  school    School  @relation(fields: [schoolId], references: [id])
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fromClass Class?  @relation("MovementFrom", fields: [fromClassId], references: [id], onDelete: SetNull)
+  toClass   Class?  @relation("MovementTo", fields: [toClassId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, date])
+  @@index([studentId, date])
+}
+
+/// Hình thức khen thưởng học sinh (Thông tư 19/2025/TT-BGDĐT, Điều 5).
+enum AwardForm {
+  /// Tuyên dương trước lớp: any teacher.
+  CLASS_PRAISE
+  /// Tuyên dương trước toàn trường: the principal, on the homeroom teacher's proposal.
+  SCHOOL_PRAISE
+  /// Giấy khen của hiệu trưởng.
+  PRINCIPAL_CERTIFICATE
+  /// Thư khen of a teacher, the principal or an authority.
+  LETTER
+  /// Any other form, such as a bằng khen of the province.
+  OTHER
+}
+
+/// A commendation of a student during the year (the year-end titles of Thông tư 22 live on TermResult).
+model StudentAward {
+  id             String    @id @default(cuid())
+  schoolId       String
+  studentId      String
+  academicYearId String
+  classId        String?
+  form           AwardForm
+  date           DateTime  @db.Date
+  /// The achievement.
+  content        String
+  /// Who gives it when not the school: "UBND phường Cầu Giấy", "Sở GD&ĐT Hà Nội".
+  issuer         String?
+  decisionNo     String?
+  createdById    String
+  createdAt      DateTime  @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, academicYearId, date])
+  @@index([studentId])
+}
+
+/// Biện pháp kỷ luật học sinh (Thông tư 19/2025/TT-BGDĐT, Điều 11).
+enum DisciplineMeasure {
+  /// Nhắc nhở.
+  REMINDER
+  /// Phê bình (lower and upper secondary).
+  CRITICISM
+  /// Yêu cầu viết bản tự kiểm điểm (lower and upper secondary).
+  SELF_REVIEW
+  /// Yêu cầu xin lỗi (primary).
+  APOLOGY
+}
+
+/// A violation and the measure taken; the circular keeps the self-review in the school's records.
+model StudentDiscipline {
+  id                String            @id @default(cuid())
+  schoolId          String
+  studentId         String
+  academicYearId    String
+  classId           String?
+  measure           DisciplineMeasure
+  /// Mức độ vi phạm (Điều 12): 1 affects the student, 2 the group or class, 3 the school.
+  severity          Int
+  date              DateTime          @db.Date
+  violation         String
+  /// Hoạt động hỗ trợ (Điều 16): counselling, follow-up, work with the family.
+  support           String?
+  /// When the family confirmed the self-review and its commitment (Điều 15).
+  familyConfirmedAt DateTime?         @db.Date
+  createdById       String
+  createdAt         DateTime          @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, academicYearId, date])
+  @@index([studentId])
+}
+
+enum AbsenceRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Đơn xin nghỉ học: a parent asks the homeroom teacher to excuse their child for some days.
+model AbsenceRequest {
+  id            String               @id @default(cuid())
+  schoolId      String
+  studentId     String
+  classId       String
+  fromDate      DateTime             @db.Date
+  toDate        DateTime             @db.Date
+  /// Null for whole days, otherwise only that session of each day.
+  session       Session?
+  reason        String
+  status        AbsenceRequestStatus @default(PENDING)
+  /// The parent who sent it, or the teacher who wrote down a request made by phone.
+  requestedById String
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, status])
+  @@index([classId, fromDate])
+  @@index([studentId, fromDate])
 }

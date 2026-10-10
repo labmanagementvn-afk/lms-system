@@ -136,7 +136,8 @@ export default function ReportsPage() {
                   )}
                   {has('studentId') && (
                     <Form.Item name="studentId" label="Học sinh" rules={rule('studentId', 'học sinh')}>
-                      <StudentSelect style={{ width: 300 }} />
+                      {/* Students who left too: their học bạ and transfer letter are printed after they go. */}
+                      <StudentSelect style={{ width: 340 }} status={null} />
                     </Form.Item>
                   )}
                   {(has('semester') || has('term')) && (

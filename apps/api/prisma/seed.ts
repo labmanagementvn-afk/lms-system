@@ -23,6 +23,7 @@ import { seedLms } from './seed/lms';
 import { seedMoetSync } from './seed/moet-sync';
 import { seedParents } from './seed/parents';
 import { seedSms } from './seed/sms';
+import { seedStudentRecords } from './seed/student-records';
 import { seedStudentAccounts } from './seed/students';
 
 const prisma = new PrismaClient();
@@ -252,6 +253,8 @@ async function main() {
   await seedEndOfYear(prisma, ctx);
   // Phase 8: SMS to parents and teachers, the education database sync history and 9A1's signed học bạ.
   for (const seed of [seedSms, seedMoetSync, seedERecords]) await seed(prisma, ctx);
+  // Phase 9: student records, movements, commendations and discipline, and leave requests.
+  await seedStudentRecords(prisma, ctx);
 }
 
 /**
@@ -289,6 +292,11 @@ async function topUp(schoolId: string) {
     }
     if (!(await prisma.eRecord.findFirst({ where: { schoolId }, select: { id: true } })) && (await seedERecords(prisma, ctx))) {
       console.log('Demo school: added the signed học bạ số of class 9A1 (phase 8).');
+      added = true;
+    }
+    if (!(await prisma.studentMovement.findFirst({ where: { schoolId }, select: { id: true } })) && !(await prisma.absenceRequest.findFirst({ where: { schoolId }, select: { id: true } }))) {
+      await seedStudentRecords(prisma, ctx);
+      console.log('Demo school: added student records, movements, commendations, discipline and leave requests (phase 9).');
       added = true;
     }
     if (!added) console.log('Demo school already exists; nothing to do.');

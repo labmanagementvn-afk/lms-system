@@ -62,13 +62,18 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
   const items = [
     { key: '/', icon: <DashboardOutlined />, label: <Link href="/">Tổng quan</Link> },
     { key: '/teachers', icon: <IdcardOutlined />, label: <Link href="/teachers">Giáo viên</Link> },
-    { key: '/students', icon: <UserOutlined />, label: <Link href="/students">Học sinh</Link> },
-    ...(staff
-      ? [
-          { key: '/parents', icon: <UsergroupAddOutlined />, label: <Link href="/parents">Tài khoản phụ huynh</Link> },
-          { key: '/students/accounts', icon: <IdcardOutlined />, label: <Link href="/students/accounts">Tài khoản học sinh</Link> },
-        ]
-      : []),
+    {
+      key: 'students',
+      icon: <UserOutlined />,
+      label: 'Học sinh',
+      children: [
+        { key: '/students', label: <Link href="/students">Hồ sơ học sinh</Link> },
+        { key: '/students/movements', label: <Link href="/students/movements">Biến động học sinh</Link> },
+        { key: '/students/merits', label: <Link href="/students/merits">Khen thưởng, kỷ luật</Link> },
+        ...(staff ? [{ key: '/students/accounts', label: <Link href="/students/accounts">Tài khoản học sinh</Link> }] : []),
+      ],
+    },
+    ...(staff ? [{ key: '/parents', icon: <UsergroupAddOutlined />, label: <Link href="/parents">Tài khoản phụ huynh</Link> }] : []),
     { key: '/classes', icon: <ApartmentOutlined />, label: <Link href="/classes">Lớp học</Link> },
     { key: '/schedules', icon: <CalendarOutlined />, label: <Link href="/schedules">Thời khóa biểu</Link> },
     {
@@ -77,6 +82,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
       label: 'Điểm danh',
       children: [
         { key: '/attendance/homeroom', label: <Link href="/attendance/homeroom">Điểm danh lớp</Link> },
+        { key: '/attendance/leave', label: <Link href="/attendance/leave">Đơn xin nghỉ học</Link> },
         { key: '/attendance/logbook', label: <Link href="/attendance/logbook">Sổ đầu bài</Link> },
         { key: '/attendance', icon: <TeamOutlined />, label: <Link href="/attendance">Ra vào cổng</Link> },
         ...(staff ? [{ key: '/attendance/devices', icon: <ScanOutlined />, label: <Link href="/attendance/devices">Thiết bị & định danh</Link> }] : []),
@@ -198,6 +204,8 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
     .filter((k) => (k === '/' ? pathname === '/' : pathname.startsWith(k)))
     .sort((a, b) => b.length - a.length)
     .slice(0, 1);
+  // Open the group holding the current page, so a deep link shows where it sits.
+  const group = items.find((i) => 'children' in i && i.children?.some((c) => c.key === selected[0]))?.key;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -205,7 +213,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
         <div style={{ padding: 16, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {collapsed ? 'QLTH' : me.school.name}
         </div>
-        <Menu mode="inline" selectedKeys={selected} defaultOpenKeys={['attendance']} items={items} />
+        <Menu mode="inline" selectedKeys={selected} defaultOpenKeys={['attendance', ...(group && group !== 'attendance' ? [group] : [])]} items={items} />
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 16px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>

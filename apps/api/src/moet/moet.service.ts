@@ -92,6 +92,10 @@ export class MoetService {
               status: s.status,
               address: s.address,
               guardian: s.guardians[0] ? { fullName: s.guardians[0].fullName, relationship: s.guardians[0].relationship, phone: s.guardians[0].phone } : null,
+              idNumber: s.idNumber,
+              ethnicity: s.ethnicity,
+              birthPlace: s.birthPlace,
+              hometown: s.hometown,
             }),
           ),
         };
@@ -205,6 +209,10 @@ export class MoetService {
           gender: r.gender ?? undefined,
           address: r.address ?? undefined,
           status: r.status ?? undefined,
+          idNumber: r.idNumber ?? undefined,
+          ethnicity: r.ethnicity ?? undefined,
+          birthPlace: r.birthPlace ?? undefined,
+          hometown: r.hometown ?? undefined,
         };
         const found = existingByCode.get(r.code);
         const student = found

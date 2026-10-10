@@ -87,7 +87,7 @@ export class AdmissionsController {
   @Post('applications/bulk-enrol')
   @HttpCode(200)
   bulkEnrol(@CurrentUser() user: AuthUser, @Body() dto: BulkEnrolDto) {
-    return this.applications.bulkEnrol(user.schoolId, dto);
+    return this.applications.bulkEnrol(user.schoolId, dto, user.userId);
   }
 
   @Post('applications')
@@ -117,7 +117,7 @@ export class AdmissionsController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Create the student, guardian and enrolment from an accepted application' })
   enrol(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: EnrolDto) {
-    return this.applications.enrol(user.schoolId, id, dto.classId);
+    return this.applications.enrol(user.schoolId, id, dto.classId, user.userId);
   }
 }
 

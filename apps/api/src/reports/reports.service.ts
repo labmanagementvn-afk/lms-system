@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AssessmentType, Gender, GuardianRelationship, HomeroomStatus, PromotionStatus, ResultLevel, Role, StudentStatus } from '@prisma/client';
+import { AssessmentType, Gender, GuardianRelationship, HomeroomStatus, MovementKind, PromotionStatus, ResultLevel, Role, StudentStatus } from '@prisma/client';
 import { AcademicYearsService } from '../academic-years/academic-years';
 import { AuthUser } from '../common/auth-user';
 import { GradeControlService } from '../grades/control.service';
@@ -187,17 +187,30 @@ export class ReportsService {
     const status = q.status!;
     const students = await this.prisma.student.findMany({
       where: { schoolId: user.schoolId, status, ...(q.gradeLevel ? { enrollments: { some: { class: { gradeLevel: q.gradeLevel } } } } : {}) },
-      select: { code: true, fullName: true, gender: true, dateOfBirth: true, updatedAt: true, enrollments: { select: { class: { select: { name: true } } }, orderBy: { enrolledAt: 'desc' }, take: 1 } },
+      select: {
+        code: true,
+        fullName: true,
+        gender: true,
+        dateOfBirth: true,
+        updatedAt: true,
+        enrollments: { select: { class: { select: { name: true } } }, orderBy: { enrolledAt: 'desc' }, take: 1 },
+        // The recorded transfer or dropping out gives the day and the reason.
+        movements: { where: { kind: { in: [MovementKind.TRANSFER_OUT, MovementKind.DROPPED] } }, select: { date: true, otherSchool: true, reason: true }, orderBy: [{ date: 'desc' }, { createdAt: 'desc' }], take: 1 },
+      },
       orderBy: { fullName: 'asc' },
     });
+    const left = status === StudentStatus.TRANSFERRED || status === StudentStatus.DROPPED;
     return {
       fileName: slug(STATUS_TITLE[status]),
       title: STATUS_TITLE[status],
       subtitles: [this.scopeLine(q.gradeLevel)],
       blocks: [
         table(
-          [STT, { header: 'Mã học sinh', width: 1.3 }, { header: 'Họ và tên', width: 2.5 }, { header: 'Ngày sinh', width: 1.1, align: 'center' }, { header: 'Giới tính', width: 0.8, align: 'center' }, { header: 'Lớp', width: 0.8, align: 'center' }, { header: 'Cập nhật', width: 1.1, align: 'center' }],
-          students.map((s, i) => [i + 1, s.code, s.fullName, dmy(s.dateOfBirth), gender(s.gender), s.enrollments[0]?.class.name ?? '', dmy(s.updatedAt)]),
+          [STT, { header: 'Mã học sinh', width: 1.3 }, { header: 'Họ và tên', width: 2.5 }, { header: 'Ngày sinh', width: 1.1, align: 'center' }, { header: 'Giới tính', width: 0.8, align: 'center' }, { header: 'Lớp', width: 0.8, align: 'center' }, { header: left ? 'Ngày' : 'Cập nhật', width: 1.1, align: 'center' }, ...(left ? [{ header: status === StudentStatus.TRANSFERRED ? 'Chuyển đến' : 'Lý do', width: 2.2 }] : [])],
+          students.map((s, i) => {
+            const m = s.movements[0];
+            return [i + 1, s.code, s.fullName, dmy(s.dateOfBirth), gender(s.gender), s.enrollments[0]?.class.name ?? '', dmy(m?.date ?? s.updatedAt), ...(left ? [(status === StudentStatus.TRANSFERRED ? m?.otherSchool : m?.reason) ?? ''] : [])];
+          }),
         ),
       ],
     };

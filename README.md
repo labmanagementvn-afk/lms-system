@@ -10,6 +10,7 @@ K-12 school platform with a Vietnamese web portal.
 - **Phase 6**: official reports as PDF and Excel, gradebook control (column locks, entry window, edit log, monitoring, exemptions, what families see) and Excel import of score sheets.
 - **Phase 7**: the summer review (retakes and summer training), the THCS completion review and award certificates.
 - **Phase 8**: SMS to parents and teachers with templates, quotas and scheduling, direct sync with the education databases, and the học bạ số signed digitally by the homeroom teacher and the principal.
+- **Phase 9**: the full student record and family, student movements with the sổ đăng bộ and the transfer letter, commendation and discipline under Thông tư 19/2025, and leave requests from parents decided by the homeroom teacher.
 
 | Part | Stack | Folder |
 |---|---|---|
@@ -106,6 +107,13 @@ Payment and accounting integrations run against **sandbox implementations**; no 
 - **Học bạ số**: each student's học bạ frozen for the year, signed by the homeroom teacher and then the principal with their remote signing accounts (VNPT SmartCA, Viettel MySign), printed with the signature stamps, revoked and reissued as new versions, and checked from the paper on a public page. See [docs/messaging-sync-esign.md](docs/messaging-sync-esign.md).
 
 The SMS gateway, the education databases and the signing services run against **sandbox implementations** only; never configure real credentials.
+
+### Phase 9
+
+- **Hồ sơ học sinh**: mã định danh, CSDL ngành code, nơi sinh, quê quán, dân tộc, tôn giáo, Đội/Đoàn, diện chính sách, chỗ ở hiện nay and nơi thường trú (ward and province), and each parent's year of birth, occupation and CCCD; a page per student with the family, school years, movements, commendation, discipline and attendance; bulk actions from the list; the new fields in the CSDL ngành exchange file.
+- **Biến động học sinh**: tuyển mới and chuyển đến on entry, chuyển lớp with the year's marks following the student, chuyển đi, thôi học and trở lại học, each dated with its reason; the sổ đăng bộ, the list of movements and the giấy giới thiệu chuyển trường as reports.
+- **Khen thưởng, kỷ luật**: the commendation forms and discipline measures of Thông tư 19/2025/TT-BGDĐT, checked against the violation level, the student's earlier measures and who records them; families are told and confirm a self-review in the parent app.
+- **Đơn xin nghỉ học**: parents ask in the app for days or a session off, the homeroom teacher approves or declines, phoned-in requests are recorded, and approved days show as có phép on the roll call. See [docs/student-records.md](docs/student-records.md).
 
 Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT`, `DRIVER` and `STUDENT` only reach the parent, driver and student apps; `DISTRICT` only reaches the district portal.
 

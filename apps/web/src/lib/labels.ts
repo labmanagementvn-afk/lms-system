@@ -103,6 +103,10 @@ export const NOTIFICATION_KIND: Record<string, string> = {
   PAYMENT_RECEIVED: 'Đã nhận thanh toán',
   HEALTH_INCIDENT: 'Sự cố y tế',
   LEAVE_DECIDED: 'Đơn nghỉ phép',
+  ABSENCE_REQUEST: 'Đơn xin nghỉ học',
+  ABSENCE_DECIDED: 'Đơn xin nghỉ học',
+  STUDENT_AWARD: 'Khen thưởng',
+  STUDENT_DISCIPLINE: 'Kỷ luật',
   ANNOUNCEMENT: 'Thông báo',
   EVENT: 'Sự kiện',
   SYSTEM: 'Hệ thống',
@@ -344,3 +348,58 @@ export const AREA: Record<string, string> = {
   audit: 'Nhật ký',
   sms: 'Tin nhắn SMS',
 };
+
+// ---- Phase 9: student records ----
+export const POLICY_GROUP: Record<string, string> = {
+  MARTYR_CHILD: 'Con liệt sĩ',
+  WAR_INVALID_CHILD: 'Con thương binh, bệnh binh',
+  POOR_HOUSEHOLD: 'Hộ nghèo',
+  NEAR_POOR_HOUSEHOLD: 'Hộ cận nghèo',
+  HARDSHIP_AREA: 'Vùng đặc biệt khó khăn',
+  DISABILITY: 'Khuyết tật',
+  ORPHAN: 'Mồ côi',
+};
+export const MOVEMENT_KIND: Record<string, { label: string; color: string }> = {
+  ENROLLED: { label: 'Tuyển mới', color: 'green' },
+  TRANSFER_IN: { label: 'Chuyển đến', color: 'cyan' },
+  CLASS_CHANGE: { label: 'Chuyển lớp', color: 'blue' },
+  TRANSFER_OUT: { label: 'Chuyển đi', color: 'orange' },
+  DROPPED: { label: 'Thôi học', color: 'red' },
+  RETURNED: { label: 'Trở lại học', color: 'purple' },
+};
+/** Thông tư 19/2025/TT-BGDĐT, Điều 5. */
+export const AWARD_FORM: Record<string, string> = {
+  CLASS_PRAISE: 'Tuyên dương trước lớp',
+  SCHOOL_PRAISE: 'Tuyên dương trước toàn trường',
+  PRINCIPAL_CERTIFICATE: 'Giấy khen của Hiệu trưởng',
+  LETTER: 'Thư khen',
+  OTHER: 'Hình thức khen thưởng khác',
+};
+/** Thông tư 19/2025/TT-BGDĐT, Điều 13: primary pupils get a reminder or an apology, older students a reminder, criticism or a self-review. */
+export const DISCIPLINE_MEASURE: Record<string, { label: string; color: string; primary: boolean }> = {
+  REMINDER: { label: 'Nhắc nhở', color: 'gold', primary: true },
+  APOLOGY: { label: 'Yêu cầu xin lỗi', color: 'orange', primary: true },
+  CRITICISM: { label: 'Phê bình', color: 'volcano', primary: false },
+  SELF_REVIEW: { label: 'Yêu cầu viết bản tự kiểm điểm', color: 'red', primary: false },
+};
+/** Điều 12: how far the violation reaches. */
+export const SEVERITY: Record<number, string> = {
+  1: 'Mức độ 1: có tác hại đến bản thân học sinh',
+  2: 'Mức độ 2: ảnh hưởng tiêu cực trong nhóm, lớp',
+  3: 'Mức độ 3: ảnh hưởng tiêu cực trong nhà trường',
+};
+export const ABSENCE_STATUS: Record<string, { label: string; color: string }> = {
+  PENDING: { label: 'Chờ duyệt', color: 'gold' },
+  APPROVED: { label: 'Đã duyệt', color: 'green' },
+  REJECTED: { label: 'Không duyệt', color: 'red' },
+  CANCELLED: { label: 'Đã rút', color: 'default' },
+};
+
+/** "2026-10-12" -> "12/10/2026" */
+export const dmy = (ymd: string | null | undefined) => (ymd ? ymd.slice(0, 10).split('-').reverse().join('/') : '');
+
+/** "Sáng 12/10/2026" or "12/10/2026 – 14/10/2026 (cả ngày)". */
+export function leaveDays(r: { fromDate: string; toDate: string; session: string | null }) {
+  const days = r.fromDate === r.toDate ? dmy(r.fromDate) : `${dmy(r.fromDate)} – ${dmy(r.toDate)}`;
+  return r.session ? `${SESSION[r.session]} ${days}` : `${days} (cả ngày)`;
+}
