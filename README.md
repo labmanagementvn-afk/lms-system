@@ -7,6 +7,7 @@ K-12 school platform with a Vietnamese web portal.
 - **Phase 3**: parent and driver apps, notifications, homeroom attendance and logbook, announcements, school bus, admissions, HR, assets.
 - **Phase 4**: student accounts, gradebook (Thông tư 22) with transcripts, conduct scoring, e-learning (courses, question bank, tests, contests, live classes).
 - **Phase 5**: district (Phòng/Sở GD&ĐT) accounts and dashboards, nightly statistics with alert rules, MOET education-database exchange files, audit log, API hardening.
+- **Phase 6**: official reports as PDF and Excel, gradebook control (column locks, entry window, edit log, monitoring, exemptions, what families see) and Excel import of score sheets.
 
 | Part | Stack | Folder |
 |---|---|---|
@@ -83,6 +84,12 @@ Payment and accounting integrations run against **sandbox implementations**; no 
 - **Dữ liệu CSDL ngành**: exports in the ministry template (students, teachers, classes, term results) kept in a history with downloads, and a student-list import in the same template with a dry run.
 - **Nhật ký hệ thống**: every state-changing API call recorded with user, module, outcome and a redacted body; failed sign-ins included; retention via `AUDIT_RETENTION_DAYS`.
 - **Hardening**: security headers (helmet), per-IP rate limiting with a stricter login limit, a JSON body limit, `GET /healthz`. See [docs/platform.md](docs/platform.md).
+
+### Phase 6
+
+- **Báo cáo**: 15 official reports (class lists, transfers, absences, exemptions, score sheets, class summaries, score distribution, level statistics, awards, retests, học bạ, entry monitoring, missing marks, edit log) previewed in the portal and downloaded as PDF or Excel with the school letterhead, national motto and signer block.
+- **Quản lý sổ điểm**: per-column locks by grade and subject, an entry window and edit limit for teachers, an edit log, entry monitoring per teacher with the list of missing marks, subject exemptions (miễn học) carried through results and reports, and settings for what parents and students see, including publishing marks only after the class gradebook is locked.
+- **Excel**: the score sheet downloads as Excel and imports back with a check first that lists every change and bad row. See [docs/reports-gradebook-control.md](docs/reports-gradebook-control.md).
 
 Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT`, `DRIVER` and `STUDENT` only reach the parent, driver and student apps; `DISTRICT` only reaches the district portal.
 

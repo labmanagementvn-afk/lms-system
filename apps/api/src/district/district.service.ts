@@ -11,6 +11,9 @@ import { CreateOfficerDto, UpdateOfficerDto, UpdateSchoolDto } from './district.
 
 const schoolSelect = { id: true, code: true, name: true, address: true, province: true, moetCode: true, timezone: true, lateAfter: true, districtId: true } as const;
 
+/** Letterhead fields: an emptied field is cleared so reports fall back to their defaults. */
+const blankToNull = (v: string | undefined) => (v === undefined ? undefined : v.trim() || null);
+
 /** Phòng / Sở GD&ĐT: cross-school dashboards for district officers, and the school's own district settings. */
 @Injectable()
 export class DistrictService {
@@ -29,7 +32,7 @@ export class DistrictService {
   async school(schoolId: string) {
     const s = await this.prisma.school.findUniqueOrThrow({
       where: { id: schoolId },
-      select: { ...schoolSelect, createdAt: true, district: { select: { id: true, code: true, name: true, level: true, province: true } } },
+      select: { ...schoolSelect, governingBody: true, principalName: true, locality: true, createdAt: true, district: { select: { id: true, code: true, name: true, level: true, province: true } } },
     });
     return s;
   }
@@ -56,6 +59,9 @@ export class DistrictService {
         districtId: dto.districtId === undefined ? undefined : dto.districtId || null,
         moetCode: dto.moetCode,
         province: dto.province,
+        governingBody: blankToNull(dto.governingBody),
+        principalName: blankToNull(dto.principalName),
+        locality: blankToNull(dto.locality),
       },
     });
     return this.school(schoolId);

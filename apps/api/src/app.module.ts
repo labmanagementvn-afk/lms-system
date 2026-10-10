@@ -22,6 +22,7 @@ import { HrModule } from './hr/hr.module';
 import { LibraryModule } from './library/library.module';
 import { LmsModule } from './lms/lms.module';
 import { MoetModule } from './moet/moet.module';
+import { ReportsModule } from './reports/reports.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ParentsModule } from './parents/parents.module';
 import { PlatformModule } from './platform/platform.module';
@@ -74,6 +75,7 @@ import { UploadsModule } from './uploads/uploads.module';
     StatsModule,
     DistrictModule,
     MoetModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

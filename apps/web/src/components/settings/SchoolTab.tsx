@@ -17,6 +17,9 @@ interface SchoolInfo {
   timezone: string;
   lateAfter: string;
   districtId: string | null;
+  governingBody: string | null;
+  principalName: string | null;
+  locality: string | null;
   district: { id: string; code: string; name: string; level: string; province: string | null } | null;
 }
 
@@ -41,7 +44,18 @@ export function SchoolTab() {
     try {
       const updated = await api<SchoolInfo>('/school', {
         method: 'PATCH',
-        body: { name: v.name, address: v.address ?? '', timezone: v.timezone, lateAfter: v.lateAfter, districtId: v.districtId ?? null, moetCode: v.moetCode ?? '', province: v.province ?? '' },
+        body: {
+          name: v.name,
+          address: v.address ?? '',
+          timezone: v.timezone,
+          lateAfter: v.lateAfter,
+          districtId: v.districtId ?? null,
+          moetCode: v.moetCode ?? '',
+          province: v.province ?? '',
+          governingBody: v.governingBody ?? '',
+          principalName: v.principalName ?? '',
+          locality: v.locality ?? '',
+        },
       });
       mutate(updated, false);
       await refresh();
@@ -90,6 +104,18 @@ export function SchoolTab() {
           </Form.Item>
           <Form.Item name="province" label="Tỉnh / thành phố" style={{ width: 240 }}>
             <Input placeholder="Hà Nội" />
+          </Form.Item>
+        </Space>
+        <Typography.Title level={5}>Tiêu đề và chữ ký trên báo cáo</Typography.Title>
+        <Form.Item name="governingBody" label="Cơ quan chủ quản" extra="In phía trên tên trường, ví dụ UBND phường Bình Phước hoặc Sở GD&ĐT Hà Nội.">
+          <Input placeholder="UBND phường Bình Phước" />
+        </Form.Item>
+        <Space size="large" wrap>
+          <Form.Item name="principalName" label="Hiệu trưởng (người ký mặc định)" style={{ width: 280 }}>
+            <Input placeholder="Trịnh Thị Phương Mai" />
+          </Form.Item>
+          <Form.Item name="locality" label="Địa danh ghi ngày tháng" extra="Bỏ trống để dùng tỉnh / thành phố." style={{ width: 240 }}>
+            <Input placeholder="Đồng Nai" />
           </Form.Item>
         </Space>
         <div>

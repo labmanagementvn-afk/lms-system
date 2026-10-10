@@ -9,9 +9,10 @@ import { seedAssessments } from './seed/assessments';
 import { seedAssets } from './seed/assets';
 import { seedBus } from './seed/bus';
 import { seedConduct } from './seed/conduct';
-import { SeedContext } from './seed/context';
+import { loadContext, SeedContext } from './seed/context';
 import { seedDistrict } from './seed/district';
 import { seedFinance } from './seed/finance';
+import { seedGradebookControl } from './seed/gradebook-control';
 import { seedGrades } from './seed/grades';
 import { seedHomeroom } from './seed/homeroom';
 import { seedHr } from './seed/hr';
@@ -50,8 +51,9 @@ const MIDDLE = ['Minh', 'Gia', 'Bảo', 'Ngọc', 'Thanh', 'Đức', 'Khánh', '
 const GIVEN = ['An', 'Anh', 'Châu', 'Dũng', 'Giang', 'Huy', 'Khoa', 'Linh', 'Nam', 'Phúc', 'Quân', 'Trang', 'Vy', 'Yến'];
 
 async function main() {
-  if (await prisma.school.findUnique({ where: { code: 'DEMO' } })) {
-    console.log('Demo school already exists; nothing to do.');
+  const existing = await prisma.school.findUnique({ where: { code: 'DEMO' }, select: { id: true } });
+  if (existing) {
+    await topUp(existing.id);
     return;
   }
 
@@ -237,6 +239,31 @@ async function main() {
   for (const seed of [seedConduct, seedGrades, seedAssessments, seedLms]) await seed(prisma, ctx);
   // Phase 5: the district, a second school, statistics and alerts.
   await seedDistrict(prisma, ctx);
+  // Phase 6: gradebook control and the report letterhead.
+  await seedGradebookControl(prisma, ctx, { fresh: true });
+}
+
+/**
+ * Adds the data of phases built after the demo school was seeded, once each, so a
+ * running demo picks up new features on its next deploy. Never deletes anything,
+ * and a failure only logs: the demo must still start.
+ */
+async function topUp(schoolId: string) {
+  try {
+    const ctx = await loadContext(prisma, schoolId, (p) => bcrypt.hash(p, 10));
+    if (!ctx) {
+      console.log('Demo school already exists and was changed too much to top up; nothing to do.');
+      return;
+    }
+    if (!(await prisma.gradeEntryWindow.findFirst({ where: { schoolId }, select: { id: true } }))) {
+      await seedGradebookControl(prisma, ctx, { fresh: false });
+      console.log('Demo school: added gradebook control data (phase 6).');
+      return;
+    }
+    console.log('Demo school already exists; nothing to do.');
+  } catch (e) {
+    console.warn('Demo top-up skipped:', (e as Error).message);
+  }
 }
 
 main()

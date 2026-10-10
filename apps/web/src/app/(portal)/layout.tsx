@@ -9,6 +9,7 @@ import {
   ProfileOutlined,
   CoffeeOutlined,
   DollarOutlined,
+  FileTextOutlined,
   FormOutlined,
   LaptopOutlined,
   MedicineBoxOutlined,
@@ -87,9 +88,11 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
       children: [
         { key: '/grades', label: <Link href="/grades">Nhập điểm</Link> },
         { key: '/grades/results', label: <Link href="/grades/results">Kết quả học tập</Link> },
+        { key: '/grades/control', label: <Link href="/grades/control">Quản lý sổ điểm</Link> },
         ...(staff ? [{ key: '/grades/settings', label: <Link href="/grades/settings">Môn học & cách đánh giá</Link> }] : []),
       ],
     },
+    { key: '/reports', icon: <FileTextOutlined />, label: <Link href="/reports">Báo cáo</Link> },
     { key: '/conduct', icon: <StarOutlined />, label: <Link href="/conduct">Rèn luyện</Link> },
     {
       key: 'lms',

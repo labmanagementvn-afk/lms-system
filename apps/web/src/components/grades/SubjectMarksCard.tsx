@@ -14,10 +14,12 @@ export interface SubjectMarks {
   passedMarks?: { TX: (boolean | null)[]; GK: boolean | null; CK: boolean | null };
   note?: string | null;
   // Year view
-  hk1?: { average: number | null; passed: boolean | null };
-  hk2?: { average: number | null; passed: boolean | null };
+  hk1?: { average: number | null; passed: boolean | null; exempt?: boolean };
+  hk2?: { average: number | null; passed: boolean | null; exempt?: boolean };
   average: number | null;
   passed: boolean | null;
+  /** Miễn học: exempt from the subject for this semester (or the year). */
+  exempt?: boolean;
 }
 
 export interface TermResult {
@@ -25,7 +27,8 @@ export interface TermResult {
   conduct: string | null;
   title: string | null;
   promotion: string | null;
-  absentDays: number;
+  /** Null when the school does not show absences to families. */
+  absentDays: number | null;
   homeroomComment: string | null;
 }
 
@@ -39,7 +42,7 @@ const MarkChip = ({ label, value }: { label: string; value: string }) => (
 /** One subject in the student / parent app: regular, mid-term and end-of-term marks and the average. */
 export function SubjectMarksCard({ subject, year }: { subject: SubjectMarks; year: boolean }) {
   const comment = subject.assessment === 'COMMENT';
-  const cell = (v: number | null | undefined, p: boolean | null | undefined) => (comment ? (p === null || p === undefined ? '—' : p ? 'Đ' : 'CĐ') : fmtMark(v));
+  const cell = (v: number | null | undefined, p: boolean | null | undefined, exempt?: boolean) => (exempt ? 'MG' : comment ? (p === null || p === undefined ? '—' : p ? 'Đ' : 'CĐ') : fmtMark(v));
   return (
     <Card
       size="small"
@@ -49,15 +52,17 @@ export function SubjectMarksCard({ subject, year }: { subject: SubjectMarks; yea
           {comment && <Tag style={{ margin: 0 }}>Nhận xét</Tag>}
         </Space>
       }
-      extra={<OutcomeCell assessment={subject.assessment} average={subject.average} passed={subject.passed} />}
+      extra={subject.exempt ? <Tag style={{ margin: 0 }}>Miễn học</Tag> : <OutcomeCell assessment={subject.assessment} average={subject.average} passed={subject.passed} />}
       styles={{ body: { padding: '8px 12px' } }}
     >
       {year ? (
         <Space wrap size={6}>
-          <MarkChip label="HK1" value={cell(subject.hk1?.average, subject.hk1?.passed)} />
-          <MarkChip label="HK2" value={cell(subject.hk2?.average, subject.hk2?.passed)} />
-          <MarkChip label="CN" value={cell(subject.average, subject.passed)} />
+          <MarkChip label="HK1" value={cell(subject.hk1?.average, subject.hk1?.passed, subject.hk1?.exempt)} />
+          <MarkChip label="HK2" value={cell(subject.hk2?.average, subject.hk2?.passed, subject.hk2?.exempt)} />
+          <MarkChip label="CN" value={cell(subject.average, subject.passed, subject.exempt)} />
         </Space>
+      ) : subject.exempt ? (
+        <Typography.Text type="secondary">Được miễn học môn này trong học kỳ.</Typography.Text>
       ) : (
         <>
           <Space wrap size={6}>
@@ -98,7 +103,7 @@ export function TermResultCard({ term, year }: { term: TermResult | null; year: 
             </Descriptions.Item>
           </>
         )}
-        <Descriptions.Item label="Nghỉ học">{term.absentDays} buổi</Descriptions.Item>
+        {term.absentDays !== null && <Descriptions.Item label="Nghỉ học">{term.absentDays} buổi</Descriptions.Item>}
         {term.homeroomComment && (
           <Descriptions.Item label="GVCN" span={2}>
             {term.homeroomComment}
@@ -110,8 +115,10 @@ export function TermResultCard({ term, year }: { term: TermResult | null; year: 
 }
 
 /** Semester / year marks list shared by the student and parent apps. */
-export function MarksList({ data, year, loading }: { data?: { subjects: SubjectMarks[]; term: TermResult | null }; year: boolean; loading: boolean }) {
+export function MarksList({ data, year, loading }: { data?: { subjects: SubjectMarks[]; term: TermResult | null; hidden?: boolean }; year: boolean; loading: boolean }) {
   if (!data) return null;
+  // The school publishes marks only once the class gradebook is locked.
+  if (data.hidden) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nhà trường chưa công bố điểm của học kỳ này" style={{ margin: '32px 0' }} />;
   return (
     <div style={{ display: 'grid', gap: 10 }}>
       <TermResultCard term={data.term} year={year} />

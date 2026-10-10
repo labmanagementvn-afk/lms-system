@@ -1,12 +1,13 @@
 'use client';
 
-import { DownloadOutlined, LockOutlined, SaveOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Empty, Input, InputNumber, Select, Space, Table, Tag, Typography } from 'antd';
+import { DownloadOutlined, FilePdfOutlined, LockOutlined, SaveOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Dropdown, Empty, Input, InputNumber, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { api } from '@/lib/api';
-import { downloadCsv } from './download';
+import { downloadCsv, downloadFile } from './download';
+import { ImportBookButton } from './ImportBookButton';
 import { fmtMark, PassedTag } from './ResultLevelTag';
 
 export interface BookStudent {
@@ -18,6 +19,7 @@ export interface BookStudent {
   average: number | null;
   passedResult: boolean | null;
   note: string | null;
+  exempt?: boolean;
 }
 
 export interface Book {
@@ -26,6 +28,8 @@ export interface Book {
   semester: number;
   setting: { assessment: 'SCORE' | 'COMMENT'; regularCount: number };
   locked: boolean;
+  lockedColumns?: { kind: 'TX' | 'GK' | 'CK'; index: number }[];
+  window?: { opensAt: string | null; closesAt: string | null; maxEdits: number | null };
   students: BookStudent[];
 }
 
@@ -54,7 +58,7 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
   const { data, isLoading, mutate } = useSWR<Book>(ready ? ['/grades/book', { classId, subjectId, semester }] : null);
   const [draft, setDraft] = useState<Record<string, CellValue>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<'save' | 'export' | null>(null);
+  const [busy, setBusy] = useState<'save' | 'export' | 'xlsx' | 'pdf' | null>(null);
 
   useEffect(() => {
     setDraft({});
@@ -142,10 +146,27 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
     }
   }
 
+  async function exportReport(format: 'xlsx' | 'pdf') {
+    if (!data) return;
+    setBusy(format);
+    try {
+      await downloadFile('/reports/subject-scores', { classId, subjectId, semester, format }, `bang-diem-${data.subject.code}-${data.class.name.replace(/\W+/g, '-')}-HK${semester}.${format}`);
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!ready) return <Empty description="Chọn lớp và môn học để nhập điểm" style={{ marginTop: 48 }} />;
 
   const locked = !!data?.locked;
+  const columnLocked = (slot: Slot) => !!data?.lockedColumns?.some((c) => c.kind === slot.kind && c.index === slot.index);
+  const now = Date.now();
+  const outsideWindow = !!data?.window && ((data.window.opensAt && now < Date.parse(data.window.opensAt)) || (data.window.closesAt && now > Date.parse(data.window.closesAt)));
   const editor = (s: BookStudent, slot: Slot, row: number, col: number) => {
+    if (s.exempt) return <Tag>MG</Tag>;
+    const disabled = locked || columnLocked(slot);
     const v = current(s, slot);
     const dirty = cellKey(s.id, slot) in draft && draft[cellKey(s.id, slot)] !== stored(s, slot);
     const style = dirty ? { background: '#fef3c7' } : undefined;
@@ -157,7 +178,7 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
             value={v === null ? null : v ? 'D' : 'CD'}
             allowClear
             placeholder="—"
-            disabled={locked}
+            disabled={disabled}
             style={{ width: 72, ...style }}
             options={[
               { value: 'D', label: 'Đ' },
@@ -177,7 +198,7 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
           step={0.1}
           precision={1}
           controls={false}
-          disabled={locked}
+          disabled={disabled}
           value={v as number | null}
           style={{ width: 64, ...style }}
           onChange={(val) => setCell(s, slot, val === null || val === undefined ? null : round1(Number(val)))}
@@ -192,7 +213,17 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
     { title: 'Mã HS', dataIndex: 'code', width: 110 },
     { title: 'Họ và tên', dataIndex: 'fullName', width: 200, fixed: 'left', render: (v: string) => <b>{v}</b> },
     ...slots.map<ColumnsType<BookStudent>[number]>((slot, col) => ({
-      title: slot.kind === 'TX' ? slot.label : <b>{slot.label}</b>,
+      title: columnLocked(slot) ? (
+        <Tooltip title="Cột điểm đã khóa">
+          <span>
+            <LockOutlined /> {slot.label}
+          </span>
+        </Tooltip>
+      ) : slot.kind === 'TX' ? (
+        slot.label
+      ) : (
+        <b>{slot.label}</b>
+      ),
       width: comment ? 90 : 80,
       align: 'center',
       render: (_, s, row) => editor(s, slot, row, col),
@@ -202,6 +233,7 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
       width: 90,
       align: 'center',
       render: (_, s) => {
+        if (s.exempt) return <Tag color="blue">Miễn học</Tag>;
         const o = liveOutcome(
           slots.filter((x) => x.kind === 'TX').map((x) => current(s, x)),
           current(s, slots[slots.length - 2]),
@@ -221,6 +253,12 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
   return (
     <>
       {locked && <Alert type="warning" showIcon icon={<LockOutlined />} style={{ marginBottom: 12 }} message="Sổ điểm học kỳ này đã khóa. Liên hệ ban giám hiệu để mở khóa trước khi sửa điểm." />}
+      {!locked && !!data?.lockedColumns?.length && (
+        <Alert type="info" showIcon icon={<LockOutlined />} style={{ marginBottom: 12 }} message={`Các cột đã khóa: ${data.lockedColumns.map((c) => (c.kind === 'TX' ? `TX${c.index}` : c.kind)).join(', ')}`} />
+      )}
+      {outsideWindow && (
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message="Ngoài thời gian nhập điểm của học kỳ: giáo viên không lưu được điểm, văn phòng vẫn nhập được." />
+      )}
       <Space wrap style={{ marginBottom: 12 }}>
         {data && (
           <Typography.Text type="secondary">
@@ -228,9 +266,21 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
           </Typography.Text>
         )}
         {changedCount > 0 && <Tag color="gold">{changedCount} thay đổi chưa lưu</Tag>}
-        <Button icon={<DownloadOutlined />} onClick={exportCsv} loading={busy === 'export'} disabled={!data}>
-          Xuất CSV
-        </Button>
+        <Dropdown
+          disabled={!data}
+          menu={{
+            items: [
+              { key: 'xlsx', icon: <DownloadOutlined />, label: 'Excel (nhập lại được)', onClick: () => exportReport('xlsx') },
+              { key: 'pdf', icon: <FilePdfOutlined />, label: 'PDF có chữ ký', onClick: () => exportReport('pdf') },
+              { key: 'csv', icon: <DownloadOutlined />, label: 'CSV', onClick: exportCsv },
+            ],
+          }}
+        >
+          <Button icon={<DownloadOutlined />} loading={!!busy && busy !== 'save'}>
+            Xuất bảng điểm
+          </Button>
+        </Dropdown>
+        {data && <ImportBookButton classId={data.class.id} subjectId={data.subject.id} semester={semester} disabled={locked} onImported={() => mutate()} />}
         <Button type="primary" icon={<SaveOutlined />} onClick={save} loading={busy === 'save'} disabled={!changedCount || locked}>
           Lưu
         </Button>
