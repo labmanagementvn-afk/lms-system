@@ -39,7 +39,7 @@ export class GradesController {
   @Get('book')
   @ApiOperation({ summary: 'Gradebook of one class, subject and semester with live averages' })
   book(@CurrentUser() user: AuthUser, @Query() query: BookQuery) {
-    return this.service.book(user.schoolId, query);
+    return this.service.bookFor(user, query);
   }
 
   @Put('book')

@@ -42,6 +42,12 @@ export class CreateTeacherDto {
   @IsEnum(TeacherStatus)
   status?: TeacherStatus;
 
+  @ApiPropertyOptional({ example: 'Tổ Toán - Khoa học tự nhiên', description: 'Tổ chuyên môn' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  subjectGroup?: string;
+
   @ApiPropertyOptional({ type: [String], description: 'IDs of subjects the teacher teaches' })
   @IsOptional()
   @IsArray()
@@ -58,6 +64,11 @@ export class CreateTeacherDto {
 export class UpdateTeacherDto extends PartialType(CreateTeacherDto) {}
 
 export class TeacherQuery extends PageQuery {
+  @ApiPropertyOptional({ description: 'Tổ chuyên môn' })
+  @IsOptional()
+  @IsString()
+  subjectGroup?: string;
+
   @ApiPropertyOptional({ enum: TeacherStatus })
   @IsOptional()
   @IsEnum(TeacherStatus)

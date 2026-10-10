@@ -8,6 +8,10 @@ K-12 school platform with a Vietnamese web portal.
 - **Phase 4**: student accounts, gradebook (Thông tư 22) with transcripts, conduct scoring, e-learning (courses, question bank, tests, contests, live classes).
 - **Phase 5**: district (Phòng/Sở GD&ĐT) accounts and dashboards, nightly statistics with alert rules, MOET education-database exchange files, audit log, API hardening.
 - **Phase 6**: official reports as PDF and Excel, gradebook control (column locks, entry window, edit log, monitoring, exemptions, what families see) and Excel import of score sheets.
+- **Phase 7**: the summer review (retakes and summer training), the THCS completion review and award certificates.
+- **Phase 8**: SMS to parents and teachers with templates, quotas and scheduling, direct sync with the education databases, and the học bạ số signed digitally by the homeroom teacher and the principal.
+- **Phase 9**: the full student record and family, student movements with the sổ đăng bộ and the transfer letter, commendation and discipline under Thông tư 19/2025, and leave requests from parents decided by the homeroom teacher.
+- **Phase 10**: teaching and homeroom assignments, positions and concurrent duties with the teaching norm of Thông tư 05/2025, the lịch báo giảng, and the sổ chủ nhiệm.
 
 | Part | Stack | Folder |
 |---|---|---|
@@ -37,7 +41,7 @@ pnpm dev                # http://localhost:3000
 
 To put a demo online (Render, or your own computer with a temporary Cloudflare link), see [docs/demo-deploy.md](docs/demo-deploy.md).
 
-Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên). Phase 3 adds a parent login (`0981000000 / Parent@123`, two children) and a driver login (`0912000001 / Driver@123`); phase 4 a student login (`hs2026001 / Student@123`); phase 5 a district officer (`pgd@caugiay.edu.vn / District@123`) and a second school (`admin@demo2.edu.vn / Admin@123`). The seed prints them.
+Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên). Phase 3 adds a parent login (`0981000000 / Parent@123`, two children) and a driver login (`0912000001 / Driver@123`); phase 4 a student login (`hs2026001 / Student@123`); phase 5 a district officer (`pgd@caugiay.edu.vn / District@123`) and a second school (`admin@demo2.edu.vn / Admin@123`); phase 8 the principal (`hieutruong@demo.edu.vn / Admin@123`), who signs học bạ số. The seed prints the first ones.
 
 ## Features
 
@@ -96,6 +100,28 @@ Payment and accounting integrations run against **sandbox implementations**; no 
 - **Kiểm tra lại & rèn luyện hè**: retakes registered by the office and entered by subject teachers, summer training set and re-evaluated by the homeroom teacher, and promotion recomputed from both (Thông tư 22/2021, Điều 12 to 14), with promotion set by hand when needed.
 - **Xét hoàn thành chương trình THCS**: the review that replaced the THCS diploma in 2026, in two rounds, with the council, the decision, the register numbers, the minutes, both lists and a confirmation paper per student, and the principal's confirmation in the học bạ.
 - **Giấy khen** for Học sinh Xuất sắc and Giỏi, one certificate per page. See [docs/end-of-year.md](docs/end-of-year.md).
+
+### Phase 8
+
+- **Tin nhắn SMS**: texts to parents and teachers under the school's brandname, from templates with placeholders, with or without diacritics, sent now or scheduled, within a monthly quota per class, with each text's delivery, retries and a usage report. Homeroom teachers text the parents of their own class.
+- **Đồng bộ CSDL ngành**: students, teachers, classes and term results submitted straight to CSDL ngành or the Sở's database with the school's account (the password is never stored), with a history that lists every refused record.
+- **Học bạ số**: each student's học bạ frozen for the year, signed by the homeroom teacher and then the principal with their remote signing accounts (VNPT SmartCA, Viettel MySign), printed with the signature stamps, revoked and reissued as new versions, and checked from the paper on a public page. See [docs/messaging-sync-esign.md](docs/messaging-sync-esign.md).
+
+The SMS gateway, the education databases and the signing services run against **sandbox implementations** only; never configure real credentials.
+
+### Phase 9
+
+- **Hồ sơ học sinh**: mã định danh, CSDL ngành code, nơi sinh, quê quán, dân tộc, tôn giáo, Đội/Đoàn, diện chính sách, chỗ ở hiện nay and nơi thường trú (ward and province), and each parent's year of birth, occupation and CCCD; a page per student with the family, school years, movements, commendation, discipline and attendance; bulk actions from the list; the new fields in the CSDL ngành exchange file.
+- **Biến động học sinh**: tuyển mới and chuyển đến on entry, chuyển lớp with the year's marks following the student, chuyển đi, thôi học and trở lại học, each dated with its reason; the sổ đăng bộ, the list of movements and the giấy giới thiệu chuyển trường as reports.
+- **Khen thưởng, kỷ luật**: the commendation forms and discipline measures of Thông tư 19/2025/TT-BGDĐT, checked against the violation level, the student's earlier measures and who records them; families are told and confirm a self-review in the parent app.
+- **Đơn xin nghỉ học**: parents ask in the app for days or a session off, the homeroom teacher approves or declines, phoned-in requests are recorded, and approved days show as có phép on the roll call. See [docs/student-records.md](docs/student-records.md).
+
+### Phase 10
+
+- **Phân công giảng dạy**: who teaches each subject in each class per semester, with periods a week and shared subjects, made from the timetable or copied from the first semester and checked against it; once a semester has assignments, teachers enter marks only where they are assigned. Teachers belong to a tổ chuyên môn.
+- **Phân công chủ nhiệm, kiêm nhiệm và định mức**: the homeroom teacher of every class, the positions and concurrent duties of Thông tư 05/2025/TT-BGDĐT from a catalogue the school edits, and each teacher's norm, reductions, assigned periods and difference, with the circular's limits checked; the bảng phân công chuyên môn as a report.
+- **Lịch báo giảng**: each teacher's week from the timetable with the lesson, teaching aids and notes of every period, printed, shown on the teacher's dashboard and carried into the sổ đầu bài.
+- **Sổ chủ nhiệm**: the homeroom teacher's book of the class, with subject teachers, students and families, the class's situation, officers and parents' committee, tổ and seating chart, year and month plans, students followed, parent meetings, results and attendance, and the leaders' review, printed as one book. See [docs/teaching-homeroom-book.md](docs/teaching-homeroom-book.md).
 
 Roles: `ADMIN` manages everything; `STAFF` manages students, enrolment, identities and manual attendance; `TEACHER` reads and records manual attendance. Finance, store and health are admin/staff only; teachers can register canteen meals and use the library. `PARENT`, `DRIVER` and `STUDENT` only reach the parent, driver and student apps; `DISTRICT` only reaches the district portal.
 

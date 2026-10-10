@@ -9,6 +9,7 @@ import { formatMark, passedLabel, YEAR } from './tt22';
 
 export const COLUMN_LOCKED_MESSAGE = 'Cột điểm này đã bị khóa';
 export const WINDOW_CLOSED_MESSAGE = 'Ngoài thời gian nhập điểm của học kỳ';
+export const NOT_ASSIGNED_MESSAGE = 'Bạn không được phân công dạy môn này ở lớp này trong học kỳ: chỉ giáo viên được phân công mới nhập điểm';
 
 /** A mark cell a save wants to write. */
 export interface CellChange {
@@ -127,10 +128,54 @@ export class GradeControlService {
     return this.window(schoolId, year.id, dto.semester);
   }
 
+  // ---- phân công giảng dạy ----
+
+  /** Whether the school has recorded who teaches what in the semester; until it does, the timetable stands in. */
+  async assignmentsRecorded(schoolId: string, academicYearId: string, semester: number) {
+    return !!(await this.prisma.teachingAssignment.findFirst({ where: { schoolId, academicYearId, semester }, select: { id: true } }));
+  }
+
   /**
-   * Checks a save against column locks (everyone), the entry window and the
-   * edit limit (teachers only; the office may enter late marks). `before` holds
-   * the current value of every touched cell.
+   * Who teaches each class and subject in a semester: the teaching assignments once the
+   * school has recorded them for the semester, else the timetable.
+   */
+  async taught(schoolId: string, academicYearId: string, semester: number, filter: { classId?: string; teacherId?: string; gradeLevel?: number } = {}) {
+    const where = {
+      schoolId,
+      academicYearId,
+      semester,
+      ...(filter.classId ? { classId: filter.classId } : {}),
+      ...(filter.teacherId ? { teacherId: filter.teacherId } : {}),
+      ...(filter.gradeLevel ? { class: { gradeLevel: filter.gradeLevel } } : {}),
+    };
+    const select = {
+      teacherId: true,
+      classId: true,
+      subjectId: true,
+      teacher: { select: { fullName: true } },
+      class: { select: { name: true, gradeLevel: true } },
+      subject: { select: { id: true, code: true, name: true } },
+    } as const;
+    if (await this.assignmentsRecorded(schoolId, academicYearId, semester)) return this.prisma.teachingAssignment.findMany({ where, select });
+    return this.prisma.timetableEntry.findMany({ where, distinct: ['teacherId', 'classId', 'subjectId'], select });
+  }
+
+  /** For the gradebook: who is assigned to the subject in the class, and whether the caller may write its marks. */
+  async assignment(user: AuthUser, ctx: { academicYearId: string; semester: number; classId: string; subjectId: string }) {
+    const recorded = await this.assignmentsRecorded(user.schoolId, ctx.academicYearId, ctx.semester);
+    if (!recorded) return { recorded, teachers: [] as string[], mine: true };
+    const rows = await this.prisma.teachingAssignment.findMany({
+      where: { classId: ctx.classId, subjectId: ctx.subjectId, semester: ctx.semester },
+      select: { teacher: { select: { fullName: true, userId: true } } },
+      orderBy: [{ createdAt: 'asc' }, { teacher: { fullName: 'asc' } }],
+    });
+    return { recorded, teachers: rows.map((r) => r.teacher.fullName), mine: user.role !== Role.TEACHER || rows.some((r) => r.teacher.userId === user.userId) };
+  }
+
+  /**
+   * Checks a save against column locks (everyone), the teaching assignment, the entry
+   * window and the edit limit (teachers only; the office may enter late marks). `before`
+   * holds the current value of every touched cell.
    */
   async assertCanWrite(
     user: AuthUser,
@@ -143,6 +188,8 @@ export class GradeControlService {
       if (locks.some((l) => lockCovers(l, ctx.gradeLevel, ctx.subjectId, c.kind, c.index))) throw new BadRequestException(`${COLUMN_LOCKED_MESSAGE}: ${columnLabel(c.kind, c.index)}`);
     }
     if (user.role !== Role.TEACHER) return;
+    // Once the school records who teaches what, a teacher writes marks only where they are assigned.
+    if (!(await this.assignment(user, ctx)).mine) throw new ForbiddenException(NOT_ASSIGNED_MESSAGE);
     const w = await this.window(user.schoolId, ctx.academicYearId, ctx.semester);
     const now = new Date();
     if ((w.opensAt && now < w.opensAt) || (w.closesAt && now > w.closesAt)) throw new ForbiddenException(WINDOW_CLOSED_MESSAGE);
@@ -215,15 +262,12 @@ export class GradeControlService {
 
   /**
    * Giám sát nhập điểm: for each teacher × class × subject taught this semester
-   * (from the timetable), how many of the expected marks are entered.
+   * (from the teaching assignments, or the timetable before they are recorded),
+   * how many of the expected marks are entered.
    */
   async monitor(schoolId: string, query: MonitorQuery) {
     const year = await this.years.current(schoolId);
-    const entries = await this.prisma.timetableEntry.findMany({
-      where: { schoolId, academicYearId: year.id, semester: query.semester, ...(query.teacherId ? { teacherId: query.teacherId } : {}), ...(query.gradeLevel ? { class: { gradeLevel: query.gradeLevel } } : {}) },
-      distinct: ['teacherId', 'classId', 'subjectId'],
-      select: { teacherId: true, classId: true, subjectId: true, teacher: { select: { fullName: true } }, class: { select: { name: true, gradeLevel: true } }, subject: { select: { name: true, code: true } } },
-    });
+    const entries = await this.taught(schoolId, year.id, query.semester, { teacherId: query.teacherId, gradeLevel: query.gradeLevel });
     if (!entries.length) return { semester: query.semester, rows: [], totals: { expected: 0, entered: 0, percent: 0 } };
     const classIds = [...new Set(entries.map((e) => e.classId))];
     const [settings, roster, scores, exemptions] = await Promise.all([
@@ -270,7 +314,7 @@ export class GradeControlService {
     const klass = await this.prisma.class.findFirst({ where: { id: query.classId, schoolId }, select: { id: true, name: true, academicYearId: true } });
     if (!klass) throw new NotFoundException('Không tìm thấy lớp');
     const [taught, settings, roster, scores, exemptions] = await Promise.all([
-      this.prisma.timetableEntry.findMany({ where: { classId: klass.id, semester: query.semester }, distinct: ['subjectId'], select: { subject: { select: { id: true, code: true, name: true } }, teacher: { select: { fullName: true } } } }),
+      this.taught(schoolId, klass.academicYearId, query.semester, { classId: klass.id }),
       loadSettings(this.prisma, schoolId),
       this.prisma.enrollment.findMany({ where: { classId: klass.id, student: { status: StudentStatus.STUDYING } }, select: { student: { select: { id: true, code: true, fullName: true } } }, orderBy: { student: { fullName: 'asc' } } }),
       this.prisma.score.findMany({
@@ -281,7 +325,13 @@ export class GradeControlService {
     ]);
     const has = new Set(scores.map((s) => `${s.studentId}|${s.subjectId}|${s.kind}|${s.index}`));
     const exempt = new Set(exemptions.map((e) => `${e.studentId}|${e.subjectId}`));
-    const subjects = orderSubjects(taught.map((t) => ({ ...t.subject, teacher: t.teacher.fullName })));
+    // A subject two teachers share (the parts of Khoa học tự nhiên) lists both.
+    const bySubject = new Map<string, { id: string; code: string; name: string; teacher: string }>();
+    for (const t of taught) {
+      const s = bySubject.get(t.subjectId);
+      bySubject.set(t.subjectId, s ? { ...s, teacher: `${s.teacher}, ${t.teacher.fullName}` } : { ...t.subject, teacher: t.teacher.fullName });
+    }
+    const subjects = orderSubjects([...bySubject.values()]);
     const rows: { studentId: string; code: string; fullName: string; subject: string; teacher: string; missing: string[] }[] = [];
     for (const { student } of roster) {
       for (const subject of subjects) {

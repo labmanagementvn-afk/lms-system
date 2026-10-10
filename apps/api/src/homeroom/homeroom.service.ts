@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { Direction, HomeroomStatus, NotificationKind, StudentStatus } from '@prisma/client';
+import { AbsenceRequestStatus, Direction, HomeroomStatus, NotificationKind, StudentStatus } from '@prisma/client';
 import { AcademicYearsService } from '../academic-years/academic-years';
 import { summarizeDay } from '../attendance/daily-summary';
 import { AuthUser } from '../common/auth-user';
 import { localDate, localTime, zonedDayRange } from '../common/time';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AbsenceService, leaveNote } from './absence.service';
 import { dmy, fromDbDate, isValidDate, monthRange, toDbDate } from './dates';
 import { HomeroomAccessService, studentSelect } from './homeroom-access.service';
 import { AttendanceQuery, AttendanceRecordDto, DailyAttendanceQuery, MonthlyAttendanceQuery, PrefillAttendanceDto, SaveAttendanceDto } from './homeroom.dto';
@@ -28,6 +29,7 @@ export class HomeroomService {
     private readonly access: HomeroomAccessService,
     private readonly notifications: NotificationsService,
     private readonly years: AcademicYearsService,
+    private readonly absences: AbsenceService,
   ) {}
 
   /** The roll-call sheet for one class and day, with what the gate terminals saw. */
@@ -54,28 +56,34 @@ export class HomeroomService {
     return this.build(school, klass, date, roster);
   }
 
-  /** Marks every unmarked student from the gate data: on time -> PRESENT, late -> LATE, no event -> ABSENT. */
+  /**
+   * Marks every unmarked student from the gate data: on time -> PRESENT, late -> LATE, no event -> ABSENT,
+   * or EXCUSED when an approved leave request covers the day.
+   */
   async prefill(user: AuthUser, dto: PrefillAttendanceDto) {
     const school = await this.school(user.schoolId);
     const date = this.resolveDate(dto.date, school, true);
     const klass = await this.access.getClass(user.schoolId, dto.classId);
     await this.access.assertHomeroom(user, klass);
     const roster = await this.access.roster(klass.id);
-    const [existing, gate] = await Promise.all([
+    const [existing, gate, leaves] = await Promise.all([
       this.prisma.homeroomAttendance.findMany({ where: { classId: klass.id, date: toDbDate(date) }, select: { studentId: true } }),
       this.gateSummaries(school, date, roster),
+      this.absences.covering(roster.map((s) => s.id), date),
     ]);
     const marked = new Set(existing.map((r) => r.studentId));
     const records: AttendanceRecordDto[] = roster
       .filter((s) => !marked.has(s.id))
       .map((s) => {
         const g = gate.get(s.id)!;
+        const leave = leaves.get(s.id);
+        if (g.status === 'ABSENT' && leave?.status === AbsenceRequestStatus.APPROVED) return { studentId: s.id, status: HomeroomStatus.EXCUSED, note: leaveNote(leave.reason) };
         if (g.status === 'ABSENT') return { studentId: s.id, status: HomeroomStatus.ABSENT };
         if (g.status === 'LATE') return { studentId: s.id, status: HomeroomStatus.LATE, note: `Vào cổng lúc ${localTime(g.firstIn!, school.timezone)}` };
         return { studentId: s.id, status: HomeroomStatus.PRESENT };
       });
     await this.upsert(user, school, klass, date, records, roster);
-    return this.build(school, klass, date, roster, gate);
+    return this.build(school, klass, date, roster, gate, leaves);
   }
 
   /** Per-student counts and per-day totals for one month. */
@@ -202,14 +210,16 @@ export class HomeroomService {
     );
   }
 
-  private async build(school: School, klass: ClassRef, date: string, roster?: Student[], gate?: Map<string, GateSummary>) {
+  private async build(school: School, klass: ClassRef, date: string, roster?: Student[], gate?: Map<string, GateSummary>, leaves?: Awaited<ReturnType<AbsenceService['covering']>>) {
     roster ??= await this.access.roster(klass.id);
     gate ??= await this.gateSummaries(school, date, roster);
+    leaves ??= await this.absences.covering(roster.map((s) => s.id), date);
     const records = await this.prisma.homeroomAttendance.findMany({ where: { classId: klass.id, date: toDbDate(date) } });
     const byStudent = new Map(records.map((r) => [r.studentId, r]));
     const rows = roster.map((s) => {
       const r = byStudent.get(s.id);
-      return { student: s, status: r?.status ?? null, note: r?.note ?? null, updatedAt: r?.updatedAt ?? null, gate: gate!.get(s.id)! };
+      // The leave request covering the day, waiting or approved, so the teacher marks it "có phép".
+      return { student: s, status: r?.status ?? null, note: r?.note ?? null, updatedAt: r?.updatedAt ?? null, gate: gate!.get(s.id)!, leave: leaves!.get(s.id) ?? null };
     });
     const summary = { total: rows.length, ...emptyCounts(), unmarked: 0 };
     for (const r of rows) {
@@ -239,8 +249,14 @@ export class HomeroomService {
     );
     // Parents hear about absences and late arrivals once per change of status, not on every re-save.
     const changed = records.filter((r) => (r.status === HomeroomStatus.ABSENT || r.status === HomeroomStatus.LATE) && before.get(r.studentId) !== r.status);
+    // Parents who asked for the day off already know their child is not in class.
+    const absent = changed.filter((r) => r.status === HomeroomStatus.ABSENT).map((r) => r.studentId);
+    const onLeave = await this.absences.covering(absent, date);
     const students = new Map(roster.map((s) => [s.id, s]));
-    for (const r of changed) await this.alertGuardians(school.id, klass, date, students.get(r.studentId)!, r);
+    for (const r of changed) {
+      if (r.status === HomeroomStatus.ABSENT && onLeave.has(r.studentId)) continue;
+      await this.alertGuardians(school.id, klass, date, students.get(r.studentId)!, r);
+    }
   }
 
   private async alertGuardians(schoolId: string, klass: ClassRef, date: string, student: Student, r: AttendanceRecordDto) {

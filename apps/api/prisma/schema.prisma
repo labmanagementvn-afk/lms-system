@@ -130,6 +130,28 @@ model School {
   completionRounds  CompletionRound[]
   completionRecords CompletionRecord[]
 
+  smsSetting   SmsSetting?
+  smsTemplates SmsTemplate[]
+  smsCampaigns SmsCampaign[]
+  moetSyncs    MoetSync[]
+  eRecords     ERecord[]
+
+  studentMovements   StudentMovement[]
+  studentAwards      StudentAward[]
+  studentDisciplines StudentDiscipline[]
+  absenceRequests    AbsenceRequest[]
+
+  dutyTypes           DutyType[]
+  teacherDuties       TeacherDuty[]
+  teachingAssignments TeachingAssignment[]
+  workloadSetting     WorkloadSetting?
+  lessonPlans         LessonPlan[]
+  homeroomBooks       HomeroomBook[]
+  homeroomMonthPlans  HomeroomMonthPlan[]
+  parentMeetings      ParentMeeting[]
+  studentNotes        StudentNote[]
+  homeroomBookReviews HomeroomBookReview[]
+
   users         User[]
   teachers      Teacher[]
   students      Student[]
@@ -233,6 +255,8 @@ model User {
   threads       DiscussionThread[]
   posts         DiscussionPost[]
 
+  signatureProfile SignatureProfile?
+
   @@index([schoolId])
   @@index([districtId])
 }
@@ -258,6 +282,9 @@ model Subject {
   exemptions     SubjectExemption[]
   retakes        SubjectRetake[]
 
+  assignments TeachingAssignment[]
+  lessonPlans LessonPlan[]
+
   @@unique([schoolId, code])
 }
 
@@ -275,6 +302,9 @@ model Teacher {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  /// Tổ chuyên môn: "Tổ Toán - Khoa học tự nhiên".
+  subjectGroup String?
+
   school          School               @relation(fields: [schoolId], references: [id])
   user            User?                @relation(fields: [userId], references: [id])
   subjects        TeacherSubject[]
@@ -287,6 +317,10 @@ model Teacher {
   employee        Employee?
   scores          Score[]
   courses         Course[]
+
+  duties      TeacherDuty[]
+  assignments TeachingAssignment[]
+  lessonPlans LessonPlan[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -315,6 +349,28 @@ model Student {
   userId      String?       @unique
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+
+  // Phase 9: the rest of the student record, as the sổ đăng bộ and CSDL ngành ask for it.
+  /// Mã định danh cá nhân: the 12-digit number of the citizen ID (CCCD, VNeID).
+  idNumber          String?
+  /// The student's code in CSDL ngành.
+  moetCode          String?
+  birthPlace        String?
+  hometown          String?
+  ethnicity         String?
+  religion          String?
+  nationality       String?       @default("Việt Nam")
+  /// Chỗ ở hiện nay: `address` keeps the house number and street, these the ward and province.
+  currentWard       String?
+  currentProvince   String?
+  /// Nơi thường trú.
+  permanentAddress  String?
+  permanentWard     String?
+  permanentProvince String?
+  policyGroups      PolicyGroup[] @default([])
+  /// Đội viên of the Đội TNTP Hồ Chí Minh, đoàn viên of the Đoàn TNCS Hồ Chí Minh.
+  youngPioneer      Boolean       @default(false)
+  youthUnion        Boolean       @default(false)
 
   school      School               @relation(fields: [schoolId], references: [id])
   user        User?                @relation(fields: [userId], references: [id])
@@ -354,6 +410,14 @@ model Student {
   subjectRetakes     SubjectRetake[]
   summerTraining     SummerTraining[]
   completionRecords  CompletionRecord[]
+  eRecords           ERecord[]
+
+  movements       StudentMovement[]
+  awards          StudentAward[]
+  disciplines     StudentDiscipline[]
+  absenceRequests AbsenceRequest[]
+
+  notes StudentNote[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -369,6 +433,11 @@ model Guardian {
   isPrimary    Boolean              @default(false)
   // Parent login account; one account covers every child with the same phone.
   userId       String?
+  // Phase 9: what the sổ đăng bộ and CSDL ngành record of the parents.
+  birthYear    Int?
+  occupation   String?
+  /// Số CCCD.
+  idNumber     String?
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id])
@@ -402,6 +471,9 @@ model AcademicYear {
   conductAssessments ConductAssessment[]
   courses            Course[]
 
+  teacherDuties       TeacherDuty[]
+  teachingAssignments TeachingAssignment[]
+
   @@unique([schoolId, name])
 }
 
@@ -432,6 +504,21 @@ model Class {
   subjectRetakes     SubjectRetake[]
   summerTrainings    SummerTraining[]
   completionRecords  CompletionRecord[]
+  smsQuota           SmsClassQuota?
+
+  movementsFrom   StudentMovement[]   @relation("MovementFrom")
+  movementsTo     StudentMovement[]   @relation("MovementTo")
+  awards          StudentAward[]
+  disciplines     StudentDiscipline[]
+  absenceRequests AbsenceRequest[]
+
+  assignments    TeachingAssignment[]
+  lessonPlans    LessonPlan[]
+  homeroomBook   HomeroomBook?
+  monthPlans     HomeroomMonthPlan[]
+  parentMeetings ParentMeeting[]
+  studentNotes   StudentNote[]
+  bookReviews    HomeroomBookReview[]
 
   @@unique([academicYearId, name])
   @@index([schoolId])
@@ -1189,6 +1276,11 @@ enum NotificationKind {
   TEST_ASSIGNED
   LIVE_CLASS
   ALERT
+  // Phase 9
+  ABSENCE_REQUEST
+  ABSENCE_DECIDED
+  STUDENT_AWARD
+  STUDENT_DISCIPLINE
 }
 
 enum AnnouncementStatus {
@@ -2922,4 +3014,647 @@ model CompletionRecord {
 
   @@unique([studentId, academicYearId])
   @@index([schoolId, academicYearId])
+}
+
+// ---- Phase 8: SMS to parents and teachers, direct sync with the education database, signed records ----
+
+enum SmsAudience {
+  PARENT
+  TEACHER
+}
+
+enum SmsCampaignStatus {
+  SCHEDULED
+  SENDING
+  SENT
+  CANCELLED
+}
+
+/// SMS settings of a school: the brandname texts go out under and the monthly quotas.
+model SmsSetting {
+  schoolId           String   @id
+  /// Sender name registered with the carrier, e.g. THCS DEMO.
+  brandname          String?
+  /// SMS (each 160 characters, or 70 with diacritics) a class may send its parents per month.
+  classMonthlyQuota  Int      @default(200)
+  /// SMS per month for messages charged to no class: to teachers and staff.
+  schoolMonthlyQuota Int      @default(500)
+  updatedAt          DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+/// A class's own monthly SMS quota when it differs from the school's default.
+model SmsClassQuota {
+  classId      String   @id
+  schoolId     String
+  monthlyLimit Int
+  updatedAt    DateTime @updatedAt
+
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+}
+
+/// A reusable text; {hoc_sinh}, {lop} and the other placeholders are filled per recipient.
+model SmsTemplate {
+  id        String      @id @default(cuid())
+  schoolId  String
+  name      String
+  audience  SmsAudience
+  body      String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId])
+}
+
+/// One text to a group of parents or teachers, sent now or at a set time.
+model SmsCampaign {
+  id          String            @id @default(cuid())
+  schoolId    String
+  audience    SmsAudience
+  title       String
+  /// As written, placeholders included.
+  body        String
+  /// With Vietnamese diacritics (70 characters per SMS) or without (160).
+  accented    Boolean           @default(false)
+  /// What was picked, for the history: { classIds, studentIds, teacherIds, allTeachers, label }.
+  scope       Json
+  scheduledAt DateTime
+  status      SmsCampaignStatus @default(SCHEDULED)
+  recipients  Int               @default(0)
+  /// SMS counted against the quotas.
+  segments    Int               @default(0)
+  createdById String
+  createdAt   DateTime          @default(now())
+  finishedAt  DateTime?
+  cancelledAt DateTime?
+
+  school   School       @relation(fields: [schoolId], references: [id])
+  messages SmsMessage[]
+
+  @@index([schoolId, scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+/// One text to one phone number and how its delivery went.
+model SmsMessage {
+  id            String     @id @default(cuid())
+  campaignId    String
+  schoolId      String
+  /// Place in the campaign's list: by class, then name.
+  seq           Int        @default(0)
+  phone         String
+  /// The parent's or teacher's name.
+  name          String
+  studentId     String?
+  /// The class whose quota pays for it; null charges the school's.
+  classId       String?
+  teacherId     String?
+  /// Personalised, and without diacritics unless the campaign is accented.
+  body          String
+  segments      Int
+  status        SyncStatus @default(PENDING)
+  attempts      Int        @default(0)
+  nextAttemptAt DateTime   @default(now())
+  externalRef   String?
+  lastError     String?
+  sentAt        DateTime?
+
+  campaign SmsCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([status, nextAttemptAt])
+  @@index([schoolId, classId])
+}
+
+enum MoetTarget {
+  /// CSDL ngành giáo dục of the ministry.
+  MOET
+  /// The database of the provincial Department (Sở GD&ĐT).
+  PROVINCE
+}
+
+enum MoetSyncStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+/// One push of one kind of records straight to the education database, with what it refused.
+model MoetSync {
+  id             String         @id @default(cuid())
+  schoolId       String
+  target         MoetTarget
+  kind           MoetExportKind
+  academicYearId String?
+  semester       Int?
+  /// The account it signed in with; the password is never stored.
+  username       String
+  provider       String
+  status         MoetSyncStatus
+  total          Int            @default(0)
+  accepted       Int            @default(0)
+  rejected       Int            @default(0)
+  /// [{ row, code, name, message }] for each record the database refused.
+  errors         Json           @default("[]")
+  /// The batch number the database gave back.
+  externalRef    String?
+  error          String?
+  createdById    String
+  startedAt      DateTime       @default(now())
+  finishedAt     DateTime?
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, startedAt])
+}
+
+enum SignatureProvider {
+  VNPT_SMARTCA
+  VIETTEL_MYSIGN
+}
+
+/// A user's remote signing account and the certificate it signs with.
+model SignatureProfile {
+  userId        String            @id
+  schoolId      String
+  provider      SignatureProvider
+  /// What the provider knows the signer by: CCCD number or phone.
+  account       String
+  certSerial    String
+  certSubject   String
+  certIssuer    String
+  certValidFrom DateTime
+  certValidTo   DateTime
+  updatedAt     DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId])
+}
+
+enum ERecordKind {
+  HOC_BA
+}
+
+enum ERecordStatus {
+  /// Waiting for the homeroom teacher to sign.
+  DRAFT
+  /// Signed by the homeroom teacher, waiting for the principal.
+  HOMEROOM_SIGNED
+  /// Signed by the principal: issued.
+  ISSUED
+  /// Withdrawn; a later version replaces it.
+  REVOKED
+}
+
+/// A record signed digitally: one student's học bạ for one school year.
+model ERecord {
+  id             String        @id @default(cuid())
+  schoolId       String
+  kind           ERecordKind
+  studentId      String
+  academicYearId String
+  classId        String
+  version        Int           @default(1)
+  status         ERecordStatus @default(DRAFT)
+  /// The document as generated ({ document, letterhead }); this is what is signed.
+  content        Json
+  /// SHA-256 of the canonical JSON of content.
+  contentHash    String
+  /// [{ role, userId, name, provider, certSerial, certSubject, signedAt, transactionId, signature }]
+  signatures     Json          @default("[]")
+  createdById    String
+  createdAt      DateTime      @default(now())
+  issuedAt       DateTime?
+  revokedAt      DateTime?
+  revokedReason  String?
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, academicYearId, kind, version])
+  @@index([schoolId, academicYearId, classId])
+}
+
+// ---- Phase 9: the student record: profile, movements, commendation and discipline, leave requests ----
+
+/// Đối tượng chính sách the school reports on.
+enum PolicyGroup {
+  /// Con liệt sĩ.
+  MARTYR_CHILD
+  /// Con thương binh, bệnh binh or of those treated as such.
+  WAR_INVALID_CHILD
+  /// Hộ nghèo.
+  POOR_HOUSEHOLD
+  /// Hộ cận nghèo.
+  NEAR_POOR_HOUSEHOLD
+  /// Living in an area of extreme hardship (vùng đặc biệt khó khăn).
+  HARDSHIP_AREA
+  /// Khuyết tật.
+  DISABILITY
+  /// Mồ côi.
+  ORPHAN
+}
+
+enum MovementKind {
+  /// Tuyển mới: admitted at the start of the level.
+  ENROLLED
+  /// Chuyển đến from another school.
+  TRANSFER_IN
+  /// Chuyển lớp within the school year.
+  CLASS_CHANGE
+  /// Chuyển đi to another school.
+  TRANSFER_OUT
+  /// Thôi học.
+  DROPPED
+  /// Trở lại học after leaving.
+  RETURNED
+}
+
+/// A change in a student's enrolment (biến động): what the sổ đăng bộ and the transfer lists print.
+model StudentMovement {
+  id             String       @id @default(cuid())
+  schoolId       String
+  studentId      String
+  kind           MovementKind
+  date           DateTime     @db.Date
+  academicYearId String?
+  fromClassId    String?
+  toClassId      String?
+  /// The other school of a transfer in or out.
+  otherSchool    String?
+  reason         String?
+  /// Number of the decision or letter behind it.
+  documentNo     String?
+  createdById    String
+  createdAt      DateTime     @default(now())
+
+  school    School  @relation(fields: [schoolId], references: [id])
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fromClass Class?  @relation("MovementFrom", fields: [fromClassId], references: [id], onDelete: SetNull)
+  toClass   Class?  @relation("MovementTo", fields: [toClassId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, date])
+  @@index([studentId, date])
+}
+
+/// Hình thức khen thưởng học sinh (Thông tư 19/2025/TT-BGDĐT, Điều 5).
+enum AwardForm {
+  /// Tuyên dương trước lớp: any teacher.
+  CLASS_PRAISE
+  /// Tuyên dương trước toàn trường: the principal, on the homeroom teacher's proposal.
+  SCHOOL_PRAISE
+  /// Giấy khen của hiệu trưởng.
+  PRINCIPAL_CERTIFICATE
+  /// Thư khen of a teacher, the principal or an authority.
+  LETTER
+  /// Any other form, such as a bằng khen of the province.
+  OTHER
+}
+
+/// A commendation of a student during the year (the year-end titles of Thông tư 22 live on TermResult).
+model StudentAward {
+  id             String    @id @default(cuid())
+  schoolId       String
+  studentId      String
+  academicYearId String
+  classId        String?
+  form           AwardForm
+  date           DateTime  @db.Date
+  /// The achievement.
+  content        String
+  /// Who gives it when not the school: "UBND phường Cầu Giấy", "Sở GD&ĐT Hà Nội".
+  issuer         String?
+  decisionNo     String?
+  createdById    String
+  createdAt      DateTime  @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, academicYearId, date])
+  @@index([studentId])
+}
+
+/// Biện pháp kỷ luật học sinh (Thông tư 19/2025/TT-BGDĐT, Điều 11).
+enum DisciplineMeasure {
+  /// Nhắc nhở.
+  REMINDER
+  /// Phê bình (lower and upper secondary).
+  CRITICISM
+  /// Yêu cầu viết bản tự kiểm điểm (lower and upper secondary).
+  SELF_REVIEW
+  /// Yêu cầu xin lỗi (primary).
+  APOLOGY
+}
+
+/// A violation and the measure taken; the circular keeps the self-review in the school's records.
+model StudentDiscipline {
+  id                String            @id @default(cuid())
+  schoolId          String
+  studentId         String
+  academicYearId    String
+  classId           String?
+  measure           DisciplineMeasure
+  /// Mức độ vi phạm (Điều 12): 1 affects the student, 2 the group or class, 3 the school.
+  severity          Int
+  date              DateTime          @db.Date
+  violation         String
+  /// Hoạt động hỗ trợ (Điều 16): counselling, follow-up, work with the family.
+  support           String?
+  /// When the family confirmed the self-review and its commitment (Điều 15).
+  familyConfirmedAt DateTime?         @db.Date
+  createdById       String
+  createdAt         DateTime          @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, academicYearId, date])
+  @@index([studentId])
+}
+
+enum AbsenceRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Đơn xin nghỉ học: a parent asks the homeroom teacher to excuse their child for some days.
+model AbsenceRequest {
+  id            String               @id @default(cuid())
+  schoolId      String
+  studentId     String
+  classId       String
+  fromDate      DateTime             @db.Date
+  toDate        DateTime             @db.Date
+  /// Null for whole days, otherwise only that session of each day.
+  session       Session?
+  reason        String
+  status        AbsenceRequestStatus @default(PENDING)
+  /// The parent who sent it, or the teacher who wrote down a request made by phone.
+  requestedById String
+  decidedById   String?
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, status])
+  @@index([classId, fromDate])
+  @@index([studentId, fromDate])
+}
+
+// ---- Phase 10: phân công chuyên môn, kiêm nhiệm and định mức tiết dạy (Thông tư 05/2025/TT-BGDĐT), lịch báo giảng, sổ chủ nhiệm ----
+
+/// How a position or duty changes a teacher's weekly teaching norm (Thông tư 05/2025/TT-BGDĐT).
+enum DutyKind {
+  /// A position with a norm of its own (Điều 7, 8): hiệu trưởng, phó hiệu trưởng, Tổng phụ trách Đội.
+  POSITION
+  /// A concurrent duty that lowers the norm (Điều 9, 10, 11). A teacher holds at most two, a homeroom class included (Điều 3).
+  CONCURRENT
+  /// Another reduction that is not a duty (Điều 12): tập sự, nuôi con dưới 12 tháng.
+  OTHER
+}
+
+/// Danh mục chức vụ, kiêm nhiệm of a school: the periods a week each one sets or takes off.
+model DutyType {
+  id        String   @id @default(cuid())
+  schoolId  String
+  code      String
+  name      String
+  kind      DutyKind
+  /// The weekly norm a POSITION sets, or the periods a week a CONCURRENT or OTHER duty takes off.
+  periods   Decimal  @db.Decimal(4, 1)
+  /// Where the number comes from: "Điều 9 Thông tư 05/2025/TT-BGDĐT".
+  basis     String?
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school School        @relation(fields: [schoolId], references: [id])
+  duties TeacherDuty[]
+
+  @@unique([schoolId, code])
+}
+
+/// Phân công kiêm nhiệm: a position or duty a teacher holds in a school year, or in one semester of it.
+model TeacherDuty {
+  id             String   @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  teacherId      String
+  dutyTypeId     String
+  /// 1 or 2; null for the whole year.
+  semester       Int?
+  /// Replaces the catalogue's periods for this teacher (in charge of two subject rooms: 3 periods for each).
+  periods        Decimal? @db.Decimal(4, 1)
+  /// "Tổ Toán - Khoa học tự nhiên", "Phòng thực hành Khoa học tự nhiên".
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  teacher      Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  dutyType     DutyType     @relation(fields: [dutyTypeId], references: [id])
+
+  @@index([schoolId, academicYearId])
+  @@index([teacherId, academicYearId])
+}
+
+/// Phân công giảng dạy: who teaches a subject in a class in a semester, and how many periods a week.
+/// Two teachers may share a subject (the parts of Khoa học tự nhiên), each with their own periods.
+model TeachingAssignment {
+  id             String   @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  classId        String
+  subjectId      String
+  teacherId      String
+  periodsPerWeek Decimal  @db.Decimal(4, 1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  school       School       @relation(fields: [schoolId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  class        Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher      Teacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, subjectId, semester, teacherId])
+  @@index([academicYearId, semester, teacherId])
+}
+
+/// Định mức tiết dạy of a school when it differs from the circular's defaults for its level.
+model WorkloadSetting {
+  schoolId          String   @id
+  /// Periods a week a teacher teaches (Điều 7): 23 tiểu học, 19 THCS, 17 THPT.
+  teacherNorm       Decimal  @db.Decimal(4, 1)
+  /// Periods a week a homeroom teacher is relieved of (Điều 9): 4.
+  homeroomReduction Decimal  @db.Decimal(4, 1)
+  updatedAt         DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+/// Lịch báo giảng: the lesson a teacher plans for one period of a week.
+model LessonPlan {
+  id           String   @id @default(cuid())
+  schoolId     String
+  teacherId    String
+  classId      String
+  subjectId    String
+  date         DateTime @db.Date
+  periodNumber Int
+  /// Tiết theo kế hoạch dạy học (phân phối chương trình) of the subject.
+  lessonNo     Int?
+  /// Tên bài dạy.
+  title        String
+  /// Đồ dùng dạy học.
+  aids         String?
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, date, periodNumber])
+  @@index([classId, date])
+}
+
+/// Sổ chủ nhiệm of a class: officers, the parents' committee, groups, the seating chart and the year's plan.
+/// Lists refer to students and guardians by id; those who left the class drop out when the book is read.
+model HomeroomBook {
+  id              String   @id @default(cuid())
+  schoolId        String
+  classId         String   @unique
+  /// Ban cán sự lớp: [{ role, studentId }].
+  officers        Json     @default("[]")
+  /// Ban đại diện cha mẹ học sinh: [{ role, guardianId }].
+  parentCommittee Json     @default("[]")
+  /// Tổ: [{ name, leaderId, studentIds }].
+  groups          Json     @default("[]")
+  /// Sơ đồ chỗ ngồi: { columns, rows, seatsPerDesk, seats } with seats[row][column * seatsPerDesk + seat], row 0 at the board.
+  seating         Json?
+  /// Kế hoạch chủ nhiệm năm học: { situation, goals, targets, measures }.
+  yearPlan        Json?
+  updatedById     String?
+  updatedAt       DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+}
+
+/// Kế hoạch chủ nhiệm tháng: the month's theme, the work planned and, at the end, how it went.
+model HomeroomMonthPlan {
+  id        String   @id @default(cuid())
+  schoolId  String
+  classId   String
+  /// First day of the month.
+  month     DateTime @db.Date
+  /// Chủ điểm of the month.
+  theme     String?
+  tasks     String
+  /// Đánh giá kết quả at the end of the month.
+  review    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, month])
+}
+
+/// Họp cha mẹ học sinh: the minutes of one meeting of the class's parents.
+model ParentMeeting {
+  id          String   @id @default(cuid())
+  schoolId    String
+  classId     String
+  date        DateTime @db.Date
+  title       String
+  /// Parents present out of those invited.
+  attended    Int?
+  invited     Int?
+  content     String
+  /// Ý kiến của cha mẹ học sinh.
+  opinions    String?
+  /// Kết luận, thống nhất.
+  conclusions String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId, date])
+}
+
+enum StudentNoteKind {
+  /// Cần quan tâm, giúp đỡ.
+  ATTENTION
+  /// Tiêu biểu, năng khiếu.
+  OUTSTANDING
+  /// Tiến bộ.
+  PROGRESS
+  OTHER
+}
+
+/// Theo dõi học sinh: what the homeroom teacher noticed about a student, what was done and how it went.
+model StudentNote {
+  id          String          @id @default(cuid())
+  schoolId    String
+  classId     String
+  studentId   String
+  date        DateTime        @db.Date
+  kind        StudentNoteKind
+  content     String
+  /// Biện pháp giáo dục, giúp đỡ.
+  action      String?
+  result      String?
+  createdById String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([classId, date])
+  @@index([studentId])
+}
+
+/// Ý kiến của Hiệu trưởng: a school leader's remarks when checking the sổ chủ nhiệm.
+model HomeroomBookReview {
+  id        String   @id @default(cuid())
+  schoolId  String
+  classId   String
+  date      DateTime @db.Date
+  content   String
+  authorId  String
+  createdAt DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+  class  Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([classId, date])
 }

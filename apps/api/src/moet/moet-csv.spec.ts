@@ -18,8 +18,12 @@ describe('MOET CSV mapping', () => {
       status: StudentStatus.STUDYING,
       address: null,
       guardian: { fullName: 'Nguyễn Bình', relationship: 'FATHER', phone: '0912' },
+      idNumber: '001214012345',
+      ethnicity: 'Kinh',
+      birthPlace: null,
+      hometown: 'Nam Định',
     });
-    expect(row).toEqual(['01-0123', 'HS2026001', 'Nguyễn An', '05/10/2014', 'Nữ', 6, '6A1', 'Đang học', '', 'Nguyễn Bình', 'Bố', '0912']);
+    expect(row).toEqual(['01-0123', 'HS2026001', 'Nguyễn An', '05/10/2014', 'Nữ', 6, '6A1', 'Đang học', '', 'Nguyễn Bình', 'Bố', '0912', '001214012345', 'Kinh', '', 'Nam Định']);
     expect(row).toHaveLength(MOET_COLUMNS.STUDENTS.length);
   });
 
@@ -60,15 +64,17 @@ describe('MOET CSV mapping', () => {
   });
 
   it('parses the template and reports bad lines', () => {
-    const text = studentImportTemplate('01-0123') + 'x;HS2;Trần B;;;;;;;;;\r\nx;HS3;Lê C;32/13/2000;Nam;;;;;;;\r\nx;HS2;Trùng;;;;;;;;;\r\nx;;Thiếu mã;;;;;;;;;\r\n';
+    const text = studentImportTemplate('01-0123') + 'x;HS2;Trần B;;;;;;;;;\r\nx;HS3;Lê C;32/13/2000;Nam;;;;;;;\r\nx;HS2;Trùng;;;;;;;;;\r\nx;;Thiếu mã;;;;;;;;;\r\nx;HS4;Phạm D;;;;;;;;;;12345;;;\r\n';
     const { rows, errors } = parseStudentImport(text);
     expect(rows.map((r) => r.code)).toEqual(['HS2026031', 'HS2']);
     expect(rows[0]).toMatchObject({ dateOfBirth: '2015-03-15', gender: 'MALE', className: '6A1', status: 'STUDYING', guardian: { fullName: 'Nguyễn Văn Bình', relationship: 'FATHER', phone: '0912345678' } });
-    expect(rows[1]).toMatchObject({ dateOfBirth: null, gender: null, className: null, status: null, guardian: null });
+    expect(rows[0]).toMatchObject({ idNumber: '001215012345', ethnicity: 'Kinh', birthPlace: 'Hà Nội', hometown: 'Nam Định' });
+    expect(rows[1]).toMatchObject({ dateOfBirth: null, gender: null, className: null, status: null, guardian: null, idNumber: null, ethnicity: null });
     expect(errors).toEqual([
       { line: 4, message: expect.stringContaining('Ngày sinh') },
       { line: 5, message: expect.stringContaining('bị lặp') },
       { line: 6, message: expect.stringContaining('Thiếu mã') },
+      { line: 7, message: expect.stringContaining('Mã định danh') },
     ]);
   });
 

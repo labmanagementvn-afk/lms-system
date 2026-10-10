@@ -128,12 +128,6 @@ function drawTable(doc: Doc, block: TableBlock) {
   const layout = headerLayout(block.columns);
   const size = block.columns.length > 14 ? 8 : block.columns.length > 9 ? 9 : BODY;
 
-  if (block.caption) {
-    ensureSpace(doc, 40);
-    font(doc, 'B', 11).text(block.caption, left(doc), doc.y, { width: total });
-    doc.y += 3;
-  }
-
   const spanWidth = (start: number, span: number) => widths.slice(start, start + span).reduce((a, b) => a + b, 0);
   const textHeight = (s: string, w: number, f: Font) => font(doc, f, size).heightOfString(s || ' ', { width: w - 2 * PAD });
   const cellBox = (x: number, y: number, w: number, h: number, s: string, f: Font, align: 'left' | 'center' | 'right', fill?: string) => {
@@ -143,22 +137,31 @@ function drawTable(doc: Doc, block: TableBlock) {
     font(doc, f, size).text(s, x + PAD, y + Math.max(PAD, (h - th) / 2), { width: w - 2 * PAD, align, lineBreak: true });
   };
 
+  const headerRow = (cells: { label: string; start: number; span: number }[]) => Math.max(14, ...cells.map((c) => textHeight(c.label, spanWidth(c.start, c.span), 'B') + 2 * PAD));
+  const h1 = headerRow(layout.top.filter((c) => c.rowSpan === 1));
+  const h2 = layout.rows === 2 ? headerRow(layout.second) : 0;
   const drawHeader = () => {
-    const rowH = (cells: { label: string; start: number; span: number }[]) => Math.max(14, ...cells.map((c) => textHeight(c.label, spanWidth(c.start, c.span), 'B') + 2 * PAD));
-    const h1 = rowH(layout.top.filter((c) => c.rowSpan === 1));
-    const h2 = layout.rows === 2 ? rowH(layout.second) : 0;
     const y = doc.y;
     for (const c of layout.top) cellBox(xs[c.start], y, spanWidth(c.start, c.span), c.rowSpan === 2 ? h1 + h2 : h1, c.label, 'B', 'center', '#e8eef3');
     for (const c of layout.second) cellBox(xs[c.start], y + h1, widths[c.start], h2, c.label, 'B', 'center', '#e8eef3');
     doc.y = y + h1 + h2;
   };
 
-  ensureSpace(doc, 60);
-  drawHeader();
   const rows = block.rows.length ? block.rows : [[ 'Không có dữ liệu', ...block.columns.slice(1).map(() => '') ]];
+  const cellsOf = (row: (typeof rows)[number]) => block.columns.map((_, i) => cellText(row[i]));
+  const rowHeight = (cells: string[]) => Math.max(14, ...cells.map((s, i) => textHeight(s, widths[i], 'R') + 2 * PAD));
+
+  // The caption, the header and the first row start on one page, so no page ends on a title or a header alone.
+  const caption = block.caption ? font(doc, 'B', 11).heightOfString(block.caption, { width: total }) + 3 : 0;
+  ensureSpace(doc, caption + Math.max(60, h1 + h2 + Math.min(rowHeight(cellsOf(rows[0])), 200)));
+  if (block.caption) {
+    font(doc, 'B', 11).text(block.caption, left(doc), doc.y, { width: total });
+    doc.y += 3;
+  }
+  drawHeader();
   for (const row of rows) {
-    const cells = block.columns.map((_, i) => cellText(row[i]));
-    const h = Math.max(14, ...cells.map((s, i) => textHeight(s, widths[i], 'R') + 2 * PAD));
+    const cells = cellsOf(row);
+    const h = rowHeight(cells);
     if (doc.y + h > bottom(doc)) {
       doc.addPage();
       drawHeader();
@@ -171,16 +174,33 @@ function drawTable(doc: Doc, block: TableBlock) {
   doc.y += 10;
 }
 
-/** One signer block: title in capitals, the hint, room for the signature, the name. */
+const STAMP_COLOR = '#B91C1C';
+
+/** One signer block: title in capitals, the hint, room for the signature (or a digital signature's stamp), the name. */
 function drawSigner(doc: Doc, s: Signer, x: number, y: number, w: number, hint: string) {
   font(doc, 'B', 11).text(s.title.toUpperCase(), x, y, { width: w, align: 'center' });
   font(doc, 'I', 10).text(s.hint ?? hint, x, doc.y, { width: w, align: 'center' });
-  if (s.name) font(doc, 'B', 11).text(s.name, x, doc.y + 50, { width: w, align: 'center' });
+  let nameY = doc.y + 50;
+  if (s.stamp?.length) {
+    const boxW = Math.min(w - 16, 210);
+    const boxX = x + (w - boxW) / 2;
+    const boxY = doc.y + 6;
+    const lineH = 10.5;
+    const boxH = s.stamp.length * lineH + 8;
+    doc.save().lineWidth(0.9).strokeColor(STAMP_COLOR).roundedRect(boxX, boxY, boxW, boxH, 3).stroke().restore();
+    s.stamp.forEach((line, i) => {
+      font(doc, i === 0 ? 'B' : 'R', 8.5).fillColor(STAMP_COLOR).text(line, boxX + 6, boxY + 4 + i * lineH, { width: boxW - 12, lineBreak: false, ellipsis: true });
+    });
+    doc.fillColor('black');
+    nameY = boxY + boxH + 8;
+  }
+  if (s.name) font(doc, 'B', 11).text(s.name, x, nameY, { width: w, align: 'center' });
   return doc.y;
 }
 
 function drawSignature(doc: Doc, lh: Letterhead, page: ReportPage) {
-  ensureSpace(doc, 110 + (page.footnote?.length ?? 0) * 4);
+  const stamped = !!(page.signer?.stamp?.length || page.cosigner?.stamp?.length);
+  ensureSpace(doc, 110 + (stamped ? 24 : 0) + (page.footnote?.length ?? 0) * 4);
   const w = contentWidth(doc) * 0.45;
   const x = left(doc) + contentWidth(doc) - w;
   const top = doc.y + 4;

@@ -5,7 +5,7 @@ import { SeedContext } from './context';
 
 // Demo roll calls and lesson logbook entries for class 6A1.
 
-const CONTENT: Record<string, string> = {
+export const CONTENT: Record<string, string> = {
   TOAN: 'Bài 3: Phân số',
   VAN: 'Bài 4: Truyện cổ tích Thạch Sanh',
   ANH: 'Unit 3: My friends',

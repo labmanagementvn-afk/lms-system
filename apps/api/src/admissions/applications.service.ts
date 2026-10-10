@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { AdmissionRoundStatus, ApplicationSource, ApplicationStatus, GuardianRelationship, Prisma, Role } from '@prisma/client';
+import { AdmissionRoundStatus, ApplicationSource, ApplicationStatus, GuardianRelationship, MovementKind, Prisma, Role } from '@prisma/client';
 import { Page, pageArgs } from '../common/pagination';
 import { normalizePhone } from '../common/phone';
+import { localDate } from '../common/time';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApplicationDto, ApplicationQuery, ApplicationStatusDto, BulkEnrolDto, ImportApplicationsDto, UpdateApplicationDto } from './admissions.dto';
 import { applicationCode, applicationPrefix, isUniqueViolation, nextStudentCode } from './codes';
@@ -254,15 +255,20 @@ export class ApplicationsService {
   /**
    * Turns an accepted application into a student: the student record, its
    * primary guardian (linked to the parent account with the same phone, if
-   * any) and the enrolment in the class, all in one transaction.
+   * any), the enrolment in the class and the "tuyển mới" entry of the sổ
+   * đăng bộ, all in one transaction.
    */
-  async enrol(schoolId: string, id: string, classId: string) {
+  async enrol(schoolId: string, id: string, classId: string, userId: string) {
     const app = await this.get(schoolId, id);
     if (app.status !== ApplicationStatus.ACCEPTED) throw new BadRequestException('Chỉ nhập học được hồ sơ đã trúng tuyển');
     const klass = await this.prisma.class.findFirst({ where: { id: classId, schoolId }, include: { academicYear: { select: { id: true, startDate: true } } } });
     if (!klass) throw new BadRequestException('Lớp không hợp lệ');
     const parent = await this.prisma.user.findFirst({ where: { phone: app.guardianPhone, schoolId, role: Role.PARENT }, select: { id: true } });
     const year = klass.academicYear.startDate.getUTCFullYear();
+    // Students admitted before the school year starts enter the school on its first day.
+    const { timezone } = await this.prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { timezone: true } });
+    const today = new Date(`${localDate(new Date(), timezone)}T00:00:00Z`);
+    const entered = today > klass.academicYear.startDate ? today : klass.academicYear.startDate;
     const codes = (await this.prisma.student.findMany({ where: { schoolId, code: { startsWith: `HS${year}` } }, select: { code: true } })).map((s) => s.code);
 
     for (let attempt = 0; ; attempt++) {
@@ -288,6 +294,7 @@ export class ApplicationsService {
                 },
               },
               enrollments: { create: { classId: klass.id, academicYearId: klass.academicYearId } },
+              movements: { create: { schoolId, kind: MovementKind.ENROLLED, date: entered, academicYearId: klass.academicYearId, toClassId: klass.id, createdById: userId } },
             },
           });
           return tx.admissionApplication.update({
@@ -303,11 +310,11 @@ export class ApplicationsService {
     }
   }
 
-  async bulkEnrol(schoolId: string, dto: BulkEnrolDto) {
+  async bulkEnrol(schoolId: string, dto: BulkEnrolDto, userId: string) {
     const results: { id: string; ok: boolean; code?: string; studentCode?: string; error?: string }[] = [];
     for (const id of [...new Set(dto.ids)]) {
       try {
-        const app = await this.enrol(schoolId, id, dto.classId);
+        const app = await this.enrol(schoolId, id, dto.classId, userId);
         results.push({ id, ok: true, code: app.code, studentCode: app.student?.code });
       } catch (e) {
         results.push({ id, ok: false, error: e instanceof Error ? e.message : 'Lỗi không xác định' });

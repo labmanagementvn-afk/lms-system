@@ -45,7 +45,8 @@ export function LessonLogDrawer({
     form.setFieldsValue({
       subjectId: log?.subject.id ?? cell.slot?.subject?.id,
       status: log?.status ?? 'DONE',
-      content: log?.content ?? '',
+      // A new entry starts from the lesson in the teacher's lịch báo giảng.
+      content: log?.content ?? (cell.slot?.plan ? `${cell.slot.plan.lessonNo ? `Tiết ${cell.slot.plan.lessonNo}: ` : ''}${cell.slot.plan.title}` : ''),
       comment: log?.comment ?? '',
       rating: log?.rating ?? undefined,
       absentStudentIds: log?.absentStudentIds ?? [],

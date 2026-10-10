@@ -1,11 +1,11 @@
 'use client';
 
 import {
-  BellOutlined,
   CalendarOutlined,
   CarOutlined,
   CoffeeOutlined,
   DollarOutlined,
+  FileDoneOutlined,
   FormOutlined,
   MedicineBoxOutlined,
   NotificationOutlined,
@@ -27,7 +27,7 @@ const SHORTCUTS = [
   { href: '/parent/bus', icon: <CarOutlined />, label: 'Xe tuyến' },
   { href: '/parent/events', icon: <NotificationOutlined />, label: 'Sự kiện' },
   { href: '/parent/services', icon: <FormOutlined />, label: 'Dịch vụ' },
-  { href: '/parent/notifications', icon: <BellOutlined />, label: 'Thông báo' },
+  { href: '/parent/leave', icon: <FileDoneOutlined />, label: 'Xin nghỉ học' },
 ];
 
 export default function ParentHome() {

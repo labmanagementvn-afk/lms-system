@@ -10,9 +10,10 @@ import { StudentSelect } from '@/components/StudentSelect';
 import { downloadFile } from '@/components/grades/download';
 import { Letterhead, ReportDocument, ReportPreview } from '@/components/reports/ReportPreview';
 import { api } from '@/lib/api';
-import { useClasses, useSubjects } from '@/lib/hooks';
+import { useAuth } from '@/lib/auth';
+import { useAllTeachers, useClasses, useSubjects } from '@/lib/hooks';
 
-type Param = 'classId' | 'subjectId' | 'studentId' | 'semester' | 'term' | 'gradeLevel' | 'from' | 'to' | 'status' | 'promotion' | 'round';
+type Param = 'classId' | 'subjectId' | 'studentId' | 'teacherId' | 'semester' | 'term' | 'gradeLevel' | 'from' | 'to' | 'week' | 'status' | 'promotion' | 'round';
 interface ReportInfo {
   key: string;
   group: string;
@@ -25,9 +26,11 @@ interface Values {
   classId?: string;
   subjectId?: string;
   studentId?: string;
+  teacherId?: string;
   semester?: number;
   gradeLevel?: number;
   range?: [Dayjs, Dayjs];
+  week?: Dayjs;
   status?: string;
   promotion?: string;
   round?: number;
@@ -39,9 +42,11 @@ interface Values {
 /** Báo cáo: pick a report, fill its parameters, preview it, download PDF or Excel. */
 export default function ReportsPage() {
   const { message } = App.useApp();
+  const { me } = useAuth();
   const { data: catalogue } = useSWR<ReportInfo[]>(['/reports']);
   const { data: classes } = useClasses();
   const { data: subjects } = useSubjects();
+  const { data: teachers } = useAllTeachers();
   const [key, setKey] = useState<string>();
   const [form] = Form.useForm<Values>();
   const [preview, setPreview] = useState<{ document: ReportDocument; letterhead: Letterhead } | null>(null);
@@ -57,17 +62,26 @@ export default function ReportsPage() {
   useEffect(() => {
     setPreview(null);
     const term = report?.params.includes('term');
-    form.setFieldsValue({ semester: report?.params.includes('semester') || term ? 1 : undefined, round: report?.params.includes('round') ? 1 : undefined, range: [dayjs().startOf('month'), dayjs()] });
-  }, [key, report, form]);
+    form.setFieldsValue({
+      semester: report?.params.includes('semester') || term ? 1 : undefined,
+      round: report?.params.includes('round') ? 1 : undefined,
+      range: [dayjs().startOf('month'), dayjs()],
+      week: dayjs(),
+      // A teacher's own lịch báo giảng by default.
+      teacherId: report?.params.includes('teacherId') ? (me?.teacherId ?? undefined) : undefined,
+    });
+  }, [key, report, form, me?.teacherId]);
 
   const query = (v: Values) => ({
     classId: v.classId,
     subjectId: v.subjectId,
     studentId: v.studentId,
+    teacherId: report?.params.includes('teacherId') ? v.teacherId : undefined,
     semester: report?.params.some((p) => p === 'semester' || p === 'term') ? v.semester : undefined,
     gradeLevel: v.gradeLevel,
     from: report?.params.includes('from') ? v.range?.[0]?.format('YYYY-MM-DD') : undefined,
     to: report?.params.includes('to') ? v.range?.[1]?.format('YYYY-MM-DD') : undefined,
+    week: report?.params.includes('week') ? v.week?.format('YYYY-MM-DD') : undefined,
     status: v.status,
     promotion: v.promotion,
     round: report?.params.includes('round') ? v.round : undefined,
@@ -126,7 +140,15 @@ export default function ReportsPage() {
                 <Space wrap align="start">
                   {has('classId') && (
                     <Form.Item name="classId" label="Lớp" rules={rule('classId', 'lớp')}>
-                      <Select allowClear={!need('classId')} placeholder="Chọn lớp" style={{ width: 140 }} showSearch optionFilterProp="label" options={(classes ?? []).map((c) => ({ value: c.id, label: c.name }))} />
+                      <Select
+                        allowClear={!need('classId')}
+                        placeholder="Chọn lớp"
+                        style={{ width: 140 }}
+                        showSearch
+                        optionFilterProp="label"
+                        // A teacher prints the sổ chủ nhiệm of their own homeroom classes only.
+                        options={(classes ?? []).filter((c) => report.key !== 'homeroom-book' || me?.role !== 'TEACHER' || c.homeroomTeacherId === me?.teacherId).map((c) => ({ value: c.id, label: c.name }))}
+                      />
                     </Form.Item>
                   )}
                   {has('subjectId') && (
@@ -136,7 +158,18 @@ export default function ReportsPage() {
                   )}
                   {has('studentId') && (
                     <Form.Item name="studentId" label="Học sinh" rules={rule('studentId', 'học sinh')}>
-                      <StudentSelect style={{ width: 300 }} />
+                      {/* Students who left too: their học bạ and transfer letter are printed after they go. */}
+                      <StudentSelect style={{ width: 340 }} status={null} />
+                    </Form.Item>
+                  )}
+                  {has('teacherId') && (
+                    <Form.Item name="teacherId" label="Giáo viên" rules={rule('teacherId', 'giáo viên')}>
+                      <Select allowClear={!need('teacherId')} placeholder="Chọn giáo viên" style={{ width: 240 }} showSearch optionFilterProp="label" options={(teachers?.items ?? []).map((t) => ({ value: t.id, label: t.fullName }))} />
+                    </Form.Item>
+                  )}
+                  {has('week') && (
+                    <Form.Item name="week" label="Tuần" rules={rule('week', 'tuần')}>
+                      <DatePicker picker="week" allowClear={false} format={(v) => `Tuần ${v.subtract((v.day() + 6) % 7, 'day').format('DD/MM/YYYY')}`} style={{ width: 170 }} />
                     </Form.Item>
                   )}
                   {(has('semester') || has('term')) && (

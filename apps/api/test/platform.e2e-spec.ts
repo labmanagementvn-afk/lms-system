@@ -297,7 +297,7 @@ describe('Platform, district and MOET (e2e)', () => {
       const text = file.text ?? file.body.toString();
       expect(text.charCodeAt(0)).toBe(0xfeff);
       const lines = text.slice(1).trim().split('\r\n');
-      expect(lines[0]).toBe('Mã trường;Mã học sinh;Họ và tên;Ngày sinh;Giới tính;Khối;Lớp;Trạng thái;Địa chỉ;Họ tên người giám hộ;Quan hệ;Điện thoại người giám hộ');
+      expect(lines[0]).toBe('Mã trường;Mã học sinh;Họ và tên;Ngày sinh;Giới tính;Khối;Lớp;Trạng thái;Địa chỉ;Họ tên người giám hộ;Quan hệ;Điện thoại người giám hộ;Mã định danh;Dân tộc;Nơi sinh;Quê quán');
       expect(lines).toHaveLength(5);
       expect(lines[1]).toContain(`01-${run};${students[0].student.code};Nguyễn Văn An;;;6;6A;Đang học`);
       await api().get(`/api/v1/moet/exports/${exportId}/download`).set(bearer(other.tokens.ADMIN)).expect(404);

@@ -30,6 +30,8 @@ export interface Book {
   locked: boolean;
   lockedColumns?: { kind: 'TX' | 'GK' | 'CK'; index: number }[];
   window?: { opensAt: string | null; closesAt: string | null; maxEdits: number | null };
+  /** Phân công giảng dạy: once the semester has assignments, only the assigned teachers (and the office) write the marks. */
+  assignment?: { recorded: boolean; teachers: string[]; mine: boolean };
   students: BookStudent[];
 }
 
@@ -160,7 +162,9 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
 
   if (!ready) return <Empty description="Chọn lớp và môn học để nhập điểm" style={{ marginTop: 48 }} />;
 
-  const locked = !!data?.locked;
+  // Read-only for a teacher who is not assigned to the subject in the class.
+  const notAssigned = !!data?.assignment && !data.assignment.mine;
+  const locked = !!data?.locked || notAssigned;
   const columnLocked = (slot: Slot) => !!data?.lockedColumns?.some((c) => c.kind === slot.kind && c.index === slot.index);
   const now = Date.now();
   const outsideWindow = !!data?.window && ((data.window.opensAt && now < Date.parse(data.window.opensAt)) || (data.window.closesAt && now > Date.parse(data.window.closesAt)));
@@ -252,7 +256,17 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
 
   return (
     <>
-      {locked && <Alert type="warning" showIcon icon={<LockOutlined />} style={{ marginBottom: 12 }} message="Sổ điểm học kỳ này đã khóa. Liên hệ ban giám hiệu để mở khóa trước khi sửa điểm." />}
+      {notAssigned && data && (
+        <Alert
+          type="info"
+          showIcon
+          icon={<LockOutlined />}
+          style={{ marginBottom: 12 }}
+          message={`Bạn không được phân công dạy ${data.subject.name} ở lớp ${data.class.name} trong học kỳ này: chỉ xem sổ điểm.`}
+          description={data.assignment!.teachers.length ? `Giáo viên được phân công: ${data.assignment!.teachers.join(', ')}.` : 'Môn này của lớp chưa được phân công giáo viên.'}
+        />
+      )}
+      {!!data?.locked && <Alert type="warning" showIcon icon={<LockOutlined />} style={{ marginBottom: 12 }} message="Sổ điểm học kỳ này đã khóa. Liên hệ ban giám hiệu để mở khóa trước khi sửa điểm." />}
       {!locked && !!data?.lockedColumns?.length && (
         <Alert type="info" showIcon icon={<LockOutlined />} style={{ marginBottom: 12 }} message={`Các cột đã khóa: ${data.lockedColumns.map((c) => (c.kind === 'TX' ? `TX${c.index}` : c.kind)).join(', ')}`} />
       )}
@@ -263,6 +277,7 @@ export function GradeSheet({ classId, subjectId, semester }: { classId?: string;
         {data && (
           <Typography.Text type="secondary">
             {data.subject.name} · Lớp {data.class.name} · {comment ? 'Đánh giá bằng nhận xét (Đ/CĐ)' : `${data.setting.regularCount} điểm thường xuyên, GK hệ số 2, CK hệ số 3`}
+            {data.assignment?.recorded && !notAssigned && data.assignment.teachers.length ? ` · Giáo viên: ${data.assignment.teachers.join(', ')}` : ''}
           </Typography.Text>
         )}
         {changedCount > 0 && <Tag color="gold">{changedCount} thay đổi chưa lưu</Tag>}

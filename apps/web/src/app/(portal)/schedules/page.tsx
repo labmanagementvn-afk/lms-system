@@ -1,13 +1,14 @@
 'use client';
 
-import { App, Button, Empty, Form, Input, Modal, Radio, Select, Space, Table, Typography } from 'antd';
+import { App, Button, Card, Empty, Form, Input, Modal, Radio, Select, Space, Table, Tag, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { PageHeader } from '@/components/PageHeader';
 import { api } from '@/lib/api';
 import { canManage, useAuth } from '@/lib/auth';
 import { useAllTeachers, useClasses, usePeriods, useSubjects } from '@/lib/hooks';
-import { DAY, SESSION } from '@/lib/labels';
+import { DAY, periods as periodsText, SESSION } from '@/lib/labels';
+import { AssignmentList, orderSubjects } from '@/lib/teaching';
 
 const DAYS = [1, 2, 3, 4, 5, 6];
 
@@ -33,6 +34,9 @@ export default function SchedulesPage() {
   const filter = mode === 'class' ? { classId } : { teacherId };
   const ready = mode === 'class' ? !!classId : !!teacherId;
   const { data: entries, mutate } = useSWR<any[]>(ready ? ['/timetable', { ...filter, semester }] : null);
+  // Phân công giảng dạy of the class: who should teach each subject and for how many periods.
+  const { data: plan, mutate: mutatePlan } = useSWR<AssignmentList>(mode === 'class' && classId ? ['/teaching/assignments', { semester, classId }] : null);
+  const assignedTo = (subjectId?: string) => (plan?.items ?? []).filter((a) => a.subject.id === subjectId);
 
   const grid = useMemo(() => {
     const map = new Map<string, any>();
@@ -61,6 +65,7 @@ export default function SchedulesPage() {
       }
       setCell(null);
       mutate();
+      mutatePlan();
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -70,7 +75,32 @@ export default function SchedulesPage() {
     await api(`/timetable/${cell!.entry.id}`, { method: 'DELETE' });
     setCell(null);
     mutate();
+    mutatePlan();
   }
+
+  /** Each subject of the class: periods and teachers assigned against those on the timetable. */
+  const check = useMemo(() => {
+    if (!plan) return [];
+    const subjectsOf = new Map<string, { id: string; code: string; name: string }>();
+    for (const a of plan.items) subjectsOf.set(a.subject.id, a.subject);
+    for (const e of entries ?? []) subjectsOf.set(e.subject.id, e.subject);
+    return orderSubjects([...subjectsOf.values()]).map((subject) => {
+      const assigned = plan.items.filter((a) => a.subject.id === subject.id);
+      const scheduled = (entries ?? []).filter((e) => e.subject.id === subject.id);
+      const want = assigned.reduce((x, a) => x + a.periodsPerWeek, 0);
+      const strangers = [...new Set(scheduled.filter((e) => !assigned.some((a) => a.teacher.id === e.teacher.id)).map((e) => e.teacher.fullName as string))];
+      const status = !assigned.length
+        ? { color: 'default', label: 'Chưa phân công' }
+        : strangers.length
+          ? { color: 'red', label: `Khác giáo viên: ${strangers.join(', ')}` }
+          : scheduled.length < want
+            ? { color: 'orange', label: `Thiếu ${periodsText(want - scheduled.length)} tiết` }
+            : scheduled.length > want
+              ? { color: 'blue', label: `Thừa ${periodsText(scheduled.length - want)} tiết` }
+              : { color: 'green', label: 'Khớp' };
+      return { subject, assigned, scheduled: scheduled.length, want, status };
+    });
+  }, [plan, entries]);
 
   const subjectId = Form.useWatch('subjectId', form);
   const teacherOptions = (teachers?.items ?? [])
@@ -170,9 +200,23 @@ export default function SchedulesPage() {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="subjectId" label="Môn học" rules={[{ required: true }]}>
-            <Select showSearch optionFilterProp="label" options={subjects?.map((s) => ({ value: s.id, label: s.name }))} />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={subjects?.map((s) => ({ value: s.id, label: s.name }))}
+              // The teacher assigned to the subject in this class comes first.
+              onChange={(id) => {
+                const a = assignedTo(id);
+                if (a.length) form.setFieldsValue({ teacherId: a[0].teacher.id });
+              }}
+            />
           </Form.Item>
-          <Form.Item name="teacherId" label="Giáo viên" rules={[{ required: true }]}>
+          <Form.Item
+            name="teacherId"
+            label="Giáo viên"
+            rules={[{ required: true }]}
+            extra={assignedTo(subjectId).length ? `Phân công: ${assignedTo(subjectId).map((a) => `${a.teacher.fullName} (${periodsText(a.periodsPerWeek)} tiết/tuần)`).join(', ')}` : undefined}
+          >
             <Select showSearch optionFilterProp="label" options={teacherOptions} />
           </Form.Item>
           <Form.Item name="room" label="Phòng học" extra="Để trống để dùng phòng của lớp">
@@ -180,6 +224,27 @@ export default function SchedulesPage() {
           </Form.Item>
         </Form>
       </Modal>
+      {mode === 'class' && plan && (
+        <Card size="small" title="Đối chiếu phân công giảng dạy" style={{ marginTop: 16 }}>
+          {plan.items.length ? (
+            <Table
+              rowKey={(r) => r.subject.id}
+              size="small"
+              pagination={false}
+              dataSource={check}
+              columns={[
+                { title: 'Môn học', render: (_, r) => r.subject.name },
+                { title: 'Phân công', render: (_, r) => r.assigned.map((a) => `${a.teacher.fullName} (${periodsText(a.periodsPerWeek)})`).join(', ') },
+                { title: 'Tiết/tuần theo phân công', align: 'center', render: (_, r) => (r.assigned.length ? periodsText(r.want) : '') },
+                { title: 'Tiết trên thời khóa biểu', align: 'center', render: (_, r) => r.scheduled },
+                { title: '', render: (_, r) => <Tag color={r.status.color}>{r.status.label}</Tag> },
+              ]}
+            />
+          ) : (
+            <Typography.Text type="secondary">Lớp chưa có phân công giảng dạy trong học kỳ này. Lập phân công ở mục Cán bộ, giáo viên › Phân công giảng dạy.</Typography.Text>
+          )}
+        </Card>
+      )}
     </>
   );
 }

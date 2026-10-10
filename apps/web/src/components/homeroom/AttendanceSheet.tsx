@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { DAY_STATUS, HOMEROOM_STATUS } from '@/lib/labels';
+import { DAY_STATUS, HOMEROOM_STATUS, leaveDays } from '@/lib/labels';
 import { formatTime } from '@/lib/time';
 
 type Draft = { status: string | null; note: string };
@@ -151,7 +151,22 @@ export function AttendanceSheet({ classId, date }: { classId?: string; date: str
         columns={[
           { title: '#', width: 50, render: (_, __, i) => i + 1 },
           { title: 'Mã', width: 110, render: (_, r) => r.student.code },
-          { title: 'Họ và tên', width: 200, render: (_, r) => <b>{r.student.fullName}</b> },
+          {
+            title: 'Họ và tên',
+            width: 220,
+            render: (_, r) => (
+              <>
+                <b>{r.student.fullName}</b>
+                {r.leave && (
+                  <Tooltip title={`${leaveDays(r.leave)}. Lý do: ${r.leave.reason}`}>
+                    <Tag color={r.leave.status === 'APPROVED' ? 'blue' : 'gold'} style={{ marginLeft: 6 }}>
+                      {r.leave.status === 'APPROVED' ? 'Có đơn xin nghỉ' : 'Đơn chờ duyệt'}
+                    </Tag>
+                  </Tooltip>
+                )}
+              </>
+            ),
+          },
           {
             title: 'Cổng trường',
             width: 170,

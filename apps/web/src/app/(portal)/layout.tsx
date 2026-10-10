@@ -13,6 +13,7 @@ import {
   FormOutlined,
   LaptopOutlined,
   MedicineBoxOutlined,
+  MessageOutlined,
   NotificationOutlined,
   ShopOutlined,
   CalendarOutlined,
@@ -60,15 +61,39 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
   const staff = me.role !== 'TEACHER';
   const items = [
     { key: '/', icon: <DashboardOutlined />, label: <Link href="/">Tổng quan</Link> },
-    { key: '/teachers', icon: <IdcardOutlined />, label: <Link href="/teachers">Giáo viên</Link> },
-    { key: '/students', icon: <UserOutlined />, label: <Link href="/students">Học sinh</Link> },
-    ...(staff
-      ? [
-          { key: '/parents', icon: <UsergroupAddOutlined />, label: <Link href="/parents">Tài khoản phụ huynh</Link> },
-          { key: '/students/accounts', icon: <IdcardOutlined />, label: <Link href="/students/accounts">Tài khoản học sinh</Link> },
-        ]
-      : []),
-    { key: '/classes', icon: <ApartmentOutlined />, label: <Link href="/classes">Lớp học</Link> },
+    {
+      key: 'staffing',
+      icon: <IdcardOutlined />,
+      label: 'Cán bộ, giáo viên',
+      children: [
+        { key: '/teachers', label: <Link href="/teachers">Hồ sơ giáo viên</Link> },
+        { key: '/teaching/assignments', label: <Link href="/teaching/assignments">Phân công giảng dạy</Link> },
+        { key: '/teaching/homeroom', label: <Link href="/teaching/homeroom">Phân công chủ nhiệm</Link> },
+        { key: '/teaching/duties', label: <Link href="/teaching/duties">Kiêm nhiệm & định mức</Link> },
+        { key: '/teaching/calendar', label: <Link href="/teaching/calendar">Lịch báo giảng</Link> },
+      ],
+    },
+    {
+      key: 'students',
+      icon: <UserOutlined />,
+      label: 'Học sinh',
+      children: [
+        { key: '/students', label: <Link href="/students">Hồ sơ học sinh</Link> },
+        { key: '/students/movements', label: <Link href="/students/movements">Biến động học sinh</Link> },
+        { key: '/students/merits', label: <Link href="/students/merits">Khen thưởng, kỷ luật</Link> },
+        ...(staff ? [{ key: '/students/accounts', label: <Link href="/students/accounts">Tài khoản học sinh</Link> }] : []),
+      ],
+    },
+    ...(staff ? [{ key: '/parents', icon: <UsergroupAddOutlined />, label: <Link href="/parents">Tài khoản phụ huynh</Link> }] : []),
+    {
+      key: 'classes',
+      icon: <ApartmentOutlined />,
+      label: 'Lớp học',
+      children: [
+        { key: '/classes', label: <Link href="/classes">Danh sách lớp</Link> },
+        { key: '/classes/book', label: <Link href="/classes/book">Sổ chủ nhiệm</Link> },
+      ],
+    },
     { key: '/schedules', icon: <CalendarOutlined />, label: <Link href="/schedules">Thời khóa biểu</Link> },
     {
       key: 'attendance',
@@ -76,6 +101,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
       label: 'Điểm danh',
       children: [
         { key: '/attendance/homeroom', label: <Link href="/attendance/homeroom">Điểm danh lớp</Link> },
+        { key: '/attendance/leave', label: <Link href="/attendance/leave">Đơn xin nghỉ học</Link> },
         { key: '/attendance/logbook', label: <Link href="/attendance/logbook">Sổ đầu bài</Link> },
         { key: '/attendance', icon: <TeamOutlined />, label: <Link href="/attendance">Ra vào cổng</Link> },
         ...(staff ? [{ key: '/attendance/devices', icon: <ScanOutlined />, label: <Link href="/attendance/devices">Thiết bị & định danh</Link> }] : []),
@@ -90,6 +116,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
         { key: '/grades/results', label: <Link href="/grades/results">Kết quả học tập</Link> },
         { key: '/grades/review', label: <Link href="/grades/review">Kiểm tra lại & rèn luyện hè</Link> },
         { key: '/grades/completion', label: <Link href="/grades/completion">Xét hoàn thành THCS</Link> },
+        { key: '/grades/records', label: <Link href="/grades/records">Học bạ số</Link> },
         { key: '/grades/control', label: <Link href="/grades/control">Quản lý sổ điểm</Link> },
         ...(staff ? [{ key: '/grades/settings', label: <Link href="/grades/settings">Môn học & cách đánh giá</Link> }] : []),
       ],
@@ -109,6 +136,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
       ],
     },
     { key: '/announcements', icon: <NotificationOutlined />, label: <Link href="/announcements">Thông báo & sự kiện</Link> },
+    { key: '/sms', icon: <MessageOutlined />, label: <Link href="/sms">Tin nhắn SMS</Link> },
     ...(staff
       ? [
           {
@@ -195,6 +223,8 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
     .filter((k) => (k === '/' ? pathname === '/' : pathname.startsWith(k)))
     .sort((a, b) => b.length - a.length)
     .slice(0, 1);
+  // Open the group holding the current page, so a deep link shows where it sits.
+  const group = items.find((i) => 'children' in i && i.children?.some((c) => c.key === selected[0]))?.key;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -202,7 +232,7 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
         <div style={{ padding: 16, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {collapsed ? 'QLTH' : me.school.name}
         </div>
-        <Menu mode="inline" selectedKeys={selected} defaultOpenKeys={['attendance']} items={items} />
+        <Menu mode="inline" selectedKeys={selected} defaultOpenKeys={['attendance', ...(group && group !== 'attendance' ? [group] : [])]} items={items} />
       </Sider>
       <Layout>
         <Header style={{ background: '#fff', padding: '0 16px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>

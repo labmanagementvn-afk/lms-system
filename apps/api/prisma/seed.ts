@@ -1,5 +1,6 @@
 // Demo data for local development: one school with teachers, classes, students,
 // a bell schedule, a sample timetable and one gate terminal.
+import { Logger } from '@nestjs/common';
 import { DeviceType, Direction, FeeUnit, Gender, GuardianRelationship, ItemCategory, MealType, PrismaClient, Role, Session } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { generateDeviceKey } from '../src/attendance/device-keys';
@@ -12,16 +13,23 @@ import { seedConduct } from './seed/conduct';
 import { loadContext, SeedContext } from './seed/context';
 import { seedDistrict } from './seed/district';
 import { seedEndOfYear } from './seed/end-of-year';
+import { seedERecords } from './seed/erecords';
 import { seedFinance } from './seed/finance';
 import { seedGradebookControl } from './seed/gradebook-control';
 import { seedGrades } from './seed/grades';
 import { seedHomeroom } from './seed/homeroom';
 import { seedHr } from './seed/hr';
 import { seedLms } from './seed/lms';
+import { seedMoetSync } from './seed/moet-sync';
 import { seedParents } from './seed/parents';
+import { seedSms } from './seed/sms';
+import { seedStudentRecords } from './seed/student-records';
 import { seedStudentAccounts } from './seed/students';
+import { seedTeaching } from './seed/teaching';
 
 const prisma = new PrismaClient();
+// The services seeders call log each sandbox send and each refusal they stage; print only real errors.
+Logger.overrideLogger(['error']);
 
 const SUBJECTS = [
   ['TOAN', 'Toán'],
@@ -244,6 +252,12 @@ async function main() {
   await seedGradebookControl(prisma, ctx, { fresh: true });
   // Phase 7: a grade 9 class at the end of the year, in the summer review and the THCS completion review.
   await seedEndOfYear(prisma, ctx);
+  // Phase 8: SMS to parents and teachers, the education database sync history and 9A1's signed học bạ.
+  for (const seed of [seedSms, seedMoetSync, seedERecords]) await seed(prisma, ctx);
+  // Phase 9: student records, movements, commendations and discipline, and leave requests.
+  await seedStudentRecords(prisma, ctx);
+  // Phase 10: tổ chuyên môn, chức vụ and kiêm nhiệm, phân công giảng dạy, the lịch báo giảng and 6A1's sổ chủ nhiệm.
+  await seedTeaching(prisma, ctx);
 }
 
 /**
@@ -267,6 +281,30 @@ async function topUp(schoolId: string) {
     if (!ctx.classes['9A1'] && !(await prisma.completionRound.findFirst({ where: { schoolId }, select: { id: true } }))) {
       await seedEndOfYear(prisma, ctx);
       console.log('Demo school: added class 9A1 with the summer review and the THCS completion review (phase 7).');
+      added = true;
+    }
+    if (!(await prisma.smsTemplate.findFirst({ where: { schoolId }, select: { id: true } })) && !(await prisma.smsCampaign.findFirst({ where: { schoolId }, select: { id: true } }))) {
+      await seedSms(prisma, ctx);
+      console.log('Demo school: added SMS templates and texts (phase 8).');
+      added = true;
+    }
+    if (!(await prisma.moetSync.findFirst({ where: { schoolId }, select: { id: true } }))) {
+      await seedMoetSync(prisma, ctx);
+      console.log('Demo school: added the education database sync history (phase 8).');
+      added = true;
+    }
+    if (!(await prisma.eRecord.findFirst({ where: { schoolId }, select: { id: true } })) && (await seedERecords(prisma, ctx))) {
+      console.log('Demo school: added the signed học bạ số of class 9A1 (phase 8).');
+      added = true;
+    }
+    if (!(await prisma.studentMovement.findFirst({ where: { schoolId }, select: { id: true } })) && !(await prisma.absenceRequest.findFirst({ where: { schoolId }, select: { id: true } }))) {
+      await seedStudentRecords(prisma, ctx);
+      console.log('Demo school: added student records, movements, commendations, discipline and leave requests (phase 9).');
+      added = true;
+    }
+    if (!(await prisma.teachingAssignment.findFirst({ where: { schoolId }, select: { id: true } })) && !(await prisma.homeroomBook.findFirst({ where: { schoolId }, select: { id: true } }))) {
+      await seedTeaching(prisma, ctx);
+      console.log('Demo school: added tổ chuyên môn, duties, teaching assignments, the lịch báo giảng and the sổ chủ nhiệm of 6A1 (phase 10).');
       added = true;
     }
     if (!added) console.log('Demo school already exists; nothing to do.');

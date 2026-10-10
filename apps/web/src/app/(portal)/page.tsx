@@ -1,12 +1,13 @@
 'use client';
 
-import { WarningOutlined } from '@ant-design/icons';
-import { Card, Col, Row, Statistic, Typography } from 'antd';
+import { BookOutlined, CheckSquareOutlined, WarningOutlined } from '@ant-design/icons';
+import { Button, Card, Col, Row, Space, Statistic, Typography } from 'antd';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { PageHeader } from '@/components/PageHeader';
 import { TrendChart } from '@/components/stats/TrendChart';
+import { TeacherWeekCard } from '@/components/teaching/TeacherWeekCard';
 import { useAuth } from '@/lib/auth';
 
 const pct = (v: number) => v.toLocaleString('vi-VN', { maximumFractionDigits: 1 });
@@ -20,6 +21,7 @@ export default function DashboardPage() {
   const { data: daily } = useSWR<any>(['/attendance/daily']);
   const { data: summary } = useSWR<any>(['/stats/summary', { days: 14 }]);
   const admin = me?.role === 'ADMIN';
+  const homeroom = me?.teacherId ? (classes ?? []).filter((c) => c.homeroomTeacherId === me.teacherId) : [];
 
   return (
     <>
@@ -51,6 +53,38 @@ export default function DashboardPage() {
           </Card>
         </Col>
       </Row>
+      {me?.role === 'TEACHER' && me.teacherId && (
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col xs={24} lg={16}>
+            <TeacherWeekCard teacherId={me.teacherId} />
+          </Col>
+          <Col xs={24} lg={8}>
+            <Card size="small" title="Lớp chủ nhiệm" style={{ height: '100%' }}>
+              {homeroom.length ? (
+                homeroom.map((c) => (
+                  <div key={c.id} style={{ marginBottom: 8 }}>
+                    <Typography.Text strong>Lớp {c.name}</Typography.Text>
+                    <Space wrap style={{ display: 'flex', marginTop: 4 }}>
+                      <Link href="/attendance/homeroom">
+                        <Button size="small" icon={<CheckSquareOutlined />}>
+                          Điểm danh
+                        </Button>
+                      </Link>
+                      <Link href="/classes/book">
+                        <Button size="small" icon={<BookOutlined />}>
+                          Sổ chủ nhiệm
+                        </Button>
+                      </Link>
+                    </Space>
+                  </div>
+                ))
+              ) : (
+                <Typography.Text type="secondary">Năm học này bạn không chủ nhiệm lớp nào.</Typography.Text>
+              )}
+            </Card>
+          </Col>
+        </Row>
+      )}
       <Typography.Title level={4} style={{ marginTop: 24 }}>
         Điểm danh hôm nay ({dayjs().format('DD/MM/YYYY')})
       </Typography.Title>

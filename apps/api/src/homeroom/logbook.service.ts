@@ -53,14 +53,20 @@ export class LogbookService {
     const to = query.to ?? addDays(from, 5);
     this.assertRange(from, to, MAX_DAYS);
     const year = await this.years.current(user.schoolId);
-    const [entries, logs, students] = await Promise.all([
+    const [entries, logs, students, plans] = await Promise.all([
       this.prisma.timetableEntry.findMany({
         where: { classId: klass.id, academicYearId: year.id },
         include: { subject: include.subject, teacher: include.teacher },
       }),
       this.prisma.lessonLog.findMany({ where: { classId: klass.id, date: { gte: toDbDate(from), lte: toDbDate(to) } }, include }),
       this.access.roster(klass.id),
+      // Lịch báo giảng: the lesson each teacher planned, so the entry starts from it.
+      this.prisma.lessonPlan.findMany({ where: { classId: klass.id, date: { gte: toDbDate(from), lte: toDbDate(to) } }, select: { date: true, periodNumber: true, lessonNo: true, title: true } }),
     ]);
+    const planOf = (date: string, periodNumber: number) => {
+      const p = plans.find((x) => fromDbDate(x.date) === date && x.periodNumber === periodNumber);
+      return p ? { lessonNo: p.lessonNo, title: p.title } : null;
+    };
 
     const days = eachDay(from, to)
       .filter((date) => dayOfWeek(date) !== 7)
@@ -72,12 +78,12 @@ export class LogbookService {
           .filter((e) => e.dayOfWeek === dow && e.semester === semester)
           .map((e) => {
             const log = dayLogs.find((l) => l.periodNumber === e.periodNumber);
-            return { periodNumber: e.periodNumber, subject: e.subject, teacher: e.teacher, room: e.room, scheduled: true, log: log ? formatLog(log) : null };
+            return { periodNumber: e.periodNumber, subject: e.subject, teacher: e.teacher, room: e.room, scheduled: true, log: log ? formatLog(log) : null, plan: planOf(date, e.periodNumber) };
           });
         // Entries written outside the timetable (a swapped or extra period) still show up.
         for (const l of dayLogs) {
           if (!slots.some((s) => s.periodNumber === l.periodNumber)) {
-            slots.push({ periodNumber: l.periodNumber, subject: l.subject, teacher: l.teacher, room: null, scheduled: false, log: formatLog(l) });
+            slots.push({ periodNumber: l.periodNumber, subject: l.subject, teacher: l.teacher, room: null, scheduled: false, log: formatLog(l), plan: planOf(date, l.periodNumber) });
           }
         }
         slots.sort((a, b) => a.periodNumber - b.periodNumber);

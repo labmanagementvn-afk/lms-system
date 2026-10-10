@@ -169,7 +169,15 @@ function LogCell({ slot, onClick }: { slot: any | null; onClick: () => void }) {
           <div style={{ color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 170 }}>{log.content}</div>
         </div>
       ) : (
-        <Tag style={{ marginTop: 4 }}>Chưa ghi</Tag>
+        <>
+          <Tag style={{ marginTop: 4 }}>Chưa ghi</Tag>
+          {slot.plan && (
+            <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 170 }} title="Theo lịch báo giảng">
+              {slot.plan.lessonNo ? `Tiết ${slot.plan.lessonNo}: ` : ''}
+              {slot.plan.title}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

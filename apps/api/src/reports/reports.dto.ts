@@ -35,6 +35,7 @@ export class ReportQuery {
 
   @ApiPropertyOptional({ example: '2026-10-01' }) @IsOptional() @Matches(DATE) from?: string;
   @ApiPropertyOptional({ example: '2026-10-31' }) @IsOptional() @Matches(DATE) to?: string;
+  @ApiPropertyOptional({ example: '2026-10-05', description: 'Một ngày bất kỳ trong tuần' }) @IsOptional() @Matches(DATE) week?: string;
 
   @ApiPropertyOptional({ example: 1, description: 'Đợt xét công nhận hoàn thành chương trình THCS (1 hoặc 2)' })
   @IsOptional()

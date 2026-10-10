@@ -54,7 +54,8 @@ export class MoetService {
     }
   }
 
-  private async resolveYear(schoolId: string, academicYearId: string | undefined, kind: MoetExportKind) {
+  /** The year asked for, else the current one (teachers need none). */
+  async resolveYear(schoolId: string, academicYearId: string | undefined, kind: MoetExportKind) {
     if (academicYearId) {
       const y = await this.prisma.academicYear.findFirst({ where: { id: academicYearId, schoolId } });
       if (!y) throw new NotFoundException('Không tìm thấy năm học');
@@ -65,7 +66,8 @@ export class MoetService {
     return current;
   }
 
-  private async build(schoolId: string, moetCode: string, kind: MoetExportKind, year: { id: string; name: string } | null, semester: number): Promise<{ header: string[]; rows: CsvCell[][] }> {
+  /** The header and rows of one kind in the exchange template; the file export and the direct sync both send these. */
+  async build(schoolId: string, moetCode: string, kind: MoetExportKind, year: { id: string; name: string } | null, semester: number): Promise<{ header: string[]; rows: CsvCell[][] }> {
     switch (kind) {
       case MoetExportKind.STUDENTS: {
         const students = await this.prisma.student.findMany({
@@ -90,6 +92,10 @@ export class MoetService {
               status: s.status,
               address: s.address,
               guardian: s.guardians[0] ? { fullName: s.guardians[0].fullName, relationship: s.guardians[0].relationship, phone: s.guardians[0].phone } : null,
+              idNumber: s.idNumber,
+              ethnicity: s.ethnicity,
+              birthPlace: s.birthPlace,
+              hometown: s.hometown,
             }),
           ),
         };
@@ -203,6 +209,10 @@ export class MoetService {
           gender: r.gender ?? undefined,
           address: r.address ?? undefined,
           status: r.status ?? undefined,
+          idNumber: r.idNumber ?? undefined,
+          ethnicity: r.ethnicity ?? undefined,
+          birthPlace: r.birthPlace ?? undefined,
+          hometown: r.hometown ?? undefined,
         };
         const found = existingByCode.get(r.code);
         const student = found

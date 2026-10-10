@@ -20,6 +20,7 @@ export class TeachersService {
     const where: Prisma.TeacherWhereInput = {
       schoolId,
       status: query.status,
+      subjectGroup: query.subjectGroup || undefined,
       subjects: query.subjectId ? { some: { subjectId: query.subjectId } } : undefined,
       OR: query.q
         ? [
@@ -59,6 +60,7 @@ export class TeachersService {
         return tx.teacher.create({
           data: {
             ...data,
+            subjectGroup: data.subjectGroup?.trim() || null,
             schoolId,
             userId: user?.id,
             dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
@@ -97,7 +99,7 @@ export class TeachersService {
         }
         return tx.teacher.update({
           where: { id },
-          data: { ...data, dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined },
+          data: { ...data, subjectGroup: data.subjectGroup === undefined ? undefined : data.subjectGroup?.trim() || null, dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined },
           include,
         });
       });

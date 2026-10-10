@@ -103,6 +103,10 @@ export const NOTIFICATION_KIND: Record<string, string> = {
   PAYMENT_RECEIVED: 'Đã nhận thanh toán',
   HEALTH_INCIDENT: 'Sự cố y tế',
   LEAVE_DECIDED: 'Đơn nghỉ phép',
+  ABSENCE_REQUEST: 'Đơn xin nghỉ học',
+  ABSENCE_DECIDED: 'Đơn xin nghỉ học',
+  STUDENT_AWARD: 'Khen thưởng',
+  STUDENT_DISCIPLINE: 'Kỷ luật',
   ANNOUNCEMENT: 'Thông báo',
   EVENT: 'Sự kiện',
   SYSTEM: 'Hệ thống',
@@ -277,7 +281,33 @@ export const MOET_EXPORT_KIND: Record<string, { label: string; hint: string }> =
   CLASSES: { label: 'Danh sách lớp', hint: 'Lớp, khối, phòng, giáo viên chủ nhiệm, sĩ số của năm học' },
   TERM_RESULTS: { label: 'Kết quả học kỳ', hint: 'Xếp loại học tập, rèn luyện, danh hiệu, lên lớp và điểm trung bình các môn' },
 };
+export const MOET_TARGET: Record<string, string> = { MOET: 'CSDL ngành (Bộ GD&ĐT)', PROVINCE: 'CSDL Sở GD&ĐT' };
+export const MOET_SYNC_STATUS: Record<string, { label: string; color: string }> = {
+  SUCCESS: { label: 'Thành công', color: 'green' },
+  PARTIAL: { label: 'Nhận một phần', color: 'gold' },
+  FAILED: { label: 'Thất bại', color: 'red' },
+};
 export const MOET_EXPORT_STATUS: Record<string, { label: string; color: string }> = { DONE: { label: 'Hoàn tất', color: 'green' }, FAILED: { label: 'Lỗi', color: 'red' } };
+export const ERECORD_STATUS: Record<string, { label: string; color: string }> = {
+  NONE: { label: 'Chưa tạo', color: 'default' },
+  DRAFT: { label: 'Chờ GVCN ký', color: 'blue' },
+  HOMEROOM_SIGNED: { label: 'Chờ Hiệu trưởng ký', color: 'gold' },
+  ISSUED: { label: 'Đã phát hành', color: 'green' },
+  REVOKED: { label: 'Đã thu hồi', color: 'red' },
+};
+export const SIGNATURE_PROVIDER: Record<string, string> = { VNPT_SMARTCA: 'VNPT SmartCA', VIETTEL_MYSIGN: 'Viettel MySign' };
+export const SMS_AUDIENCE: Record<string, string> = { PARENT: 'Phụ huynh', TEACHER: 'Giáo viên' };
+export const SMS_CAMPAIGN_STATUS: Record<string, { label: string; color: string }> = {
+  SCHEDULED: { label: 'Hẹn giờ', color: 'blue' },
+  SENDING: { label: 'Đang gửi', color: 'gold' },
+  SENT: { label: 'Đã gửi', color: 'green' },
+  CANCELLED: { label: 'Đã hủy', color: 'default' },
+};
+export const SMS_STATUS: Record<string, { label: string; color: string }> = {
+  PENDING: { label: 'Đang chờ', color: 'blue' },
+  SUCCESS: { label: 'Thành công', color: 'green' },
+  FAILED: { label: 'Lỗi', color: 'red' },
+};
 export const HTTP_METHOD: Record<string, { label: string; color: string }> = {
   POST: { label: 'Tạo', color: 'green' },
   PUT: { label: 'Ghi', color: 'blue' },
@@ -316,4 +346,79 @@ export const AREA: Record<string, string> = {
   moet: 'CSDL ngành',
   district: 'Phòng/Sở',
   audit: 'Nhật ký',
+  sms: 'Tin nhắn SMS',
 };
+
+// ---- Phase 9: student records ----
+export const POLICY_GROUP: Record<string, string> = {
+  MARTYR_CHILD: 'Con liệt sĩ',
+  WAR_INVALID_CHILD: 'Con thương binh, bệnh binh',
+  POOR_HOUSEHOLD: 'Hộ nghèo',
+  NEAR_POOR_HOUSEHOLD: 'Hộ cận nghèo',
+  HARDSHIP_AREA: 'Vùng đặc biệt khó khăn',
+  DISABILITY: 'Khuyết tật',
+  ORPHAN: 'Mồ côi',
+};
+export const MOVEMENT_KIND: Record<string, { label: string; color: string }> = {
+  ENROLLED: { label: 'Tuyển mới', color: 'green' },
+  TRANSFER_IN: { label: 'Chuyển đến', color: 'cyan' },
+  CLASS_CHANGE: { label: 'Chuyển lớp', color: 'blue' },
+  TRANSFER_OUT: { label: 'Chuyển đi', color: 'orange' },
+  DROPPED: { label: 'Thôi học', color: 'red' },
+  RETURNED: { label: 'Trở lại học', color: 'purple' },
+};
+/** Thông tư 19/2025/TT-BGDĐT, Điều 5. */
+export const AWARD_FORM: Record<string, string> = {
+  CLASS_PRAISE: 'Tuyên dương trước lớp',
+  SCHOOL_PRAISE: 'Tuyên dương trước toàn trường',
+  PRINCIPAL_CERTIFICATE: 'Giấy khen của Hiệu trưởng',
+  LETTER: 'Thư khen',
+  OTHER: 'Hình thức khen thưởng khác',
+};
+/** Thông tư 19/2025/TT-BGDĐT, Điều 13: primary pupils get a reminder or an apology, older students a reminder, criticism or a self-review. */
+export const DISCIPLINE_MEASURE: Record<string, { label: string; color: string; primary: boolean }> = {
+  REMINDER: { label: 'Nhắc nhở', color: 'gold', primary: true },
+  APOLOGY: { label: 'Yêu cầu xin lỗi', color: 'orange', primary: true },
+  CRITICISM: { label: 'Phê bình', color: 'volcano', primary: false },
+  SELF_REVIEW: { label: 'Yêu cầu viết bản tự kiểm điểm', color: 'red', primary: false },
+};
+/** Điều 12: how far the violation reaches. */
+export const SEVERITY: Record<number, string> = {
+  1: 'Mức độ 1: có tác hại đến bản thân học sinh',
+  2: 'Mức độ 2: ảnh hưởng tiêu cực trong nhóm, lớp',
+  3: 'Mức độ 3: ảnh hưởng tiêu cực trong nhà trường',
+};
+export const ABSENCE_STATUS: Record<string, { label: string; color: string }> = {
+  PENDING: { label: 'Chờ duyệt', color: 'gold' },
+  APPROVED: { label: 'Đã duyệt', color: 'green' },
+  REJECTED: { label: 'Không duyệt', color: 'red' },
+  CANCELLED: { label: 'Đã rút', color: 'default' },
+};
+
+/** "2026-10-12" -> "12/10/2026" */
+export const dmy = (ymd: string | null | undefined) => (ymd ? ymd.slice(0, 10).split('-').reverse().join('/') : '');
+
+/** "Sáng 12/10/2026" or "12/10/2026 – 14/10/2026 (cả ngày)". */
+export function leaveDays(r: { fromDate: string; toDate: string; session: string | null }) {
+  const days = r.fromDate === r.toDate ? dmy(r.fromDate) : `${dmy(r.fromDate)} – ${dmy(r.toDate)}`;
+  return r.session ? `${SESSION[r.session]} ${days}` : `${days} (cả ngày)`;
+}
+
+// ---- Phase 10: phân công chuyên môn, kiêm nhiệm, định mức tiết dạy, lịch báo giảng, sổ chủ nhiệm ----
+
+export const DUTY_KIND: Record<string, { label: string; color: string }> = {
+  POSITION: { label: 'Chức vụ', color: 'purple' },
+  CONCURRENT: { label: 'Kiêm nhiệm', color: 'blue' },
+  OTHER: { label: 'Chế độ khác', color: 'default' },
+};
+export const NOTE_KIND: Record<string, { label: string; color: string }> = {
+  ATTENTION: { label: 'Cần quan tâm, giúp đỡ', color: 'orange' },
+  OUTSTANDING: { label: 'Có thành tích nổi bật', color: 'green' },
+  PROGRESS: { label: 'Có tiến bộ', color: 'blue' },
+  OTHER: { label: 'Khác', color: 'default' },
+};
+/** Ban cán sự lớp, Ban chỉ huy chi đội and Ban đại diện cha mẹ học sinh roles to pick from (any other may be typed). */
+export const OFFICER_ROLES = ['Lớp trưởng', 'Lớp phó học tập', 'Lớp phó văn thể mỹ', 'Lớp phó lao động', 'Lớp phó kỷ luật', 'Thủ quỹ', 'Chi đội trưởng', 'Chi đội phó', 'Bí thư chi đoàn', 'Phó bí thư chi đoàn'];
+export const COMMITTEE_ROLES = ['Trưởng ban', 'Phó trưởng ban', 'Ủy viên'];
+/** "4", "1,5": periods with a decimal comma. */
+export const periods = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(Math.round(n * 10) / 10).replace('.', ','));
