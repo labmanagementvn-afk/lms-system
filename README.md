@@ -34,6 +34,8 @@ cp .env.example .env.local
 pnpm dev                # http://localhost:3000
 ```
 
+To put a demo online (Render, or your own computer with a temporary Cloudflare link), see [docs/demo-deploy.md](docs/demo-deploy.md).
+
 Demo logins (from the seed): `admin@demo.edu.vn / Admin@123` (quản trị), `baove@demo.edu.vn / Staff@123` (nhân viên), `gv001@demo.edu.vn / Teacher@123` (giáo viên). Phase 3 adds a parent login (`0981000000 / Parent@123`, two children) and a driver login (`0912000001 / Driver@123`); phase 4 a student login (`hs2026001 / Student@123`); phase 5 a district officer (`pgd@caugiay.edu.vn / District@123`) and a second school (`admin@demo2.edu.vn / Admin@123`). The seed prints them.
 
 ## Features

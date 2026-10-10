@@ -2,7 +2,7 @@ import { API_URL, ApiError, getToken } from '@/lib/api';
 
 /** Fetches a CSV route with the bearer token and hands it to the browser as a file download. */
 export async function downloadCsv(path: string, query: Record<string, unknown>, filename: string) {
-  const url = new URL(API_URL + path);
+  const url = new URL(API_URL + path, globalThis.location?.origin);
   for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   const token = getToken();
   const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });

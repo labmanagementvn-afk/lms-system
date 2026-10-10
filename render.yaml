@@ -1,0 +1,29 @@
+# Render Blueprint: one web service (API + portal) and a Postgres database, both on the free plan.
+# Free web services sleep after 15 idle minutes; free databases expire 30 days after creation.
+services:
+  - type: web
+    name: lms-system
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lms-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SEED_DEMO
+        value: "true"
+      # Testers in one office share an IP; the default is 10 logins per minute per IP.
+      - key: AUTH_RATE_LIMIT_PER_MIN
+        value: "60"
+
+databases:
+  - name: lms-db
+    plan: free
+    region: singapore
+    databaseName: lms
+    user: lms
