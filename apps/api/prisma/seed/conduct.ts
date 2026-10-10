@@ -40,26 +40,8 @@ const SELF_7A1 = { 1: [97, 93, 90, 91, 87, 98, 80, 92, 88, 75], 2: [98, 92, 87, 
 const TEACHER_7A1 = { 1: [95, 92, 88, 90, 85, 97, 78, 91, 86, 72], 2: [96, 90, 85, 93, 88, 98, 82, 89, 90, 75] };
 
 export async function seedConduct(prisma: PrismaClient, ctx: SeedContext) {
-  const { schoolId, academicYearId } = ctx;
-  await prisma.conductCriterion.createMany({ data: DEFAULT_CRITERIA.map((c) => ({ ...c, schoolId })), skipDuplicates: true });
-  const criteria: Criterion[] = await prisma.conductCriterion.findMany({
-    where: { schoolId, isActive: true },
-    select: { id: true, maxPoints: true },
-    orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
-  });
-
-  interface Row {
-    classId: string;
-    studentId: string;
-    semester: number;
-    seed: number;
-    selfTotal: number;
-    teacherTotal?: number;
-    reviewedById?: string;
-    approved?: boolean;
-    approvedAt?: Date;
-  }
-  const rows: Row[] = [];
+  await prisma.conductCriterion.createMany({ data: DEFAULT_CRITERIA.map((c) => ({ ...c, schoolId: ctx.schoolId })), skipDuplicates: true });
+  const rows: ConductRow[] = [];
 
   // 6A1, semester 1: everyone self-assessed, 8 reviewed by the homeroom teacher, 5 of those approved.
   const class6A1 = ctx.classes['6A1'];
@@ -92,7 +74,30 @@ export async function seedConduct(prisma: PrismaClient, ctx: SeedContext) {
       });
     });
   }
+  await createConductAssessments(prisma, ctx, rows);
+}
 
+/** One semester assessment to seed: the student's own total, and the teacher's once reviewed. */
+export interface ConductRow {
+  classId: string;
+  studentId: string;
+  semester: number;
+  seed: number;
+  selfTotal: number;
+  teacherTotal?: number;
+  reviewedById?: string;
+  approved?: boolean;
+  approvedAt?: Date;
+}
+
+/** Creates the assessments with points per criterion; approved ones also set the semester's conduct level. */
+export async function createConductAssessments(prisma: PrismaClient, ctx: SeedContext, rows: ConductRow[]) {
+  const { schoolId, academicYearId } = ctx;
+  const criteria: Criterion[] = await prisma.conductCriterion.findMany({
+    where: { schoolId, isActive: true },
+    select: { id: true, maxPoints: true },
+    orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
+  });
   const termResults: Prisma.TermResultUpsertArgs[] = [];
   for (const r of rows) {
     const self = spread(r.selfTotal, criteria, r.seed);

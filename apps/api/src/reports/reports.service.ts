@@ -3,14 +3,14 @@ import { AssessmentType, Gender, GuardianRelationship, HomeroomStatus, Promotion
 import { AcademicYearsService } from '../academic-years/academic-years';
 import { AuthUser } from '../common/auth-user';
 import { GradeControlService } from '../grades/control.service';
-import { GradesService, LEVEL_LABEL, PROMOTION_LABEL } from '../grades/grades.service';
+import { GradesService, LEVEL_LABEL, promotionLabel } from '../grades/grades.service';
 import { orderSubjects } from '../grades/results';
-import { formatMark, passedLabel, TITLE_EXCELLENT, TITLE_GOOD, YEAR } from '../grades/tt22';
+import { formatMark, passedLabel, promotionReason, TITLE_EXCELLENT, TITLE_GOOD, YEAR } from '../grades/tt22';
 import { PrismaService } from '../prisma/prisma.service';
 import { Cell, Letterhead, ReportColumn, ReportDocument, slug, table, text } from './document';
 import { ReportQuery } from './reports.dto';
 
-export type ReportParam = 'classId' | 'subjectId' | 'studentId' | 'semester' | 'term' | 'gradeLevel' | 'from' | 'to' | 'status' | 'promotion';
+export type ReportParam = 'classId' | 'subjectId' | 'studentId' | 'semester' | 'term' | 'gradeLevel' | 'from' | 'to' | 'status' | 'promotion' | 'round';
 
 export interface ReportDef {
   key: string;
@@ -30,13 +30,14 @@ const GROUP_GRADEBOOK = 'Quản lý sổ điểm';
 const OFFICE: Role[] = [Role.ADMIN, Role.STAFF];
 
 const semesterName = (s: number) => (s === YEAR ? 'Cả năm' : s === 1 ? 'Học kỳ I' : 'Học kỳ II');
-const mark = (v: number | null | undefined) => (v === null || v === undefined ? '' : formatMark(v));
-const gender = (g: Gender | null) => (g === Gender.FEMALE ? 'Nữ' : g === Gender.MALE ? 'Nam' : '');
-const dmy = (d: Date | null | undefined) => (d ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}` : '');
-const level = (l: ResultLevel | null) => (l ? LEVEL_LABEL[l] : '');
+export const mark = (v: number | null | undefined) => (v === null || v === undefined ? '' : formatMark(v));
+export const gender = (g: Gender | null) => (g === Gender.FEMALE ? 'Nữ' : g === Gender.MALE ? 'Nam' : '');
+/** 05/03/2012 from a date column (stored at UTC midnight). */
+export const dmy = (d: Date | null | undefined) => (d ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}` : '');
+export const level = (l: ResultLevel | null | undefined) => (l ? LEVEL_LABEL[l] : '');
 /** "33,3%": one decimal with a decimal comma, as in the printed forms. */
-const pct = (n: number, total: number) => (total ? `${String(Math.round((n / total) * 1000) / 10).replace('.', ',')}%` : '');
-const STT: ReportColumn = { header: 'STT', width: 0.5, align: 'center' };
+export const pct = (n: number, total: number) => (total ? `${String(Math.round((n / total) * 1000) / 10).replace('.', ',')}%` : '');
+export const STT: ReportColumn = { header: 'STT', width: 0.5, align: 'center' };
 
 const STATUS_TITLE: Record<StudentStatus, string> = {
   STUDYING: 'Danh sách học sinh đang học',
@@ -336,7 +337,7 @@ export class ReportsService {
       ...s.subjects.map((x) => (x.exempt ? 'MG' : x.assessment === AssessmentType.COMMENT ? (x.passed === null ? '' : x.passed ? 'Đ' : 'CĐ') : mark(x.average))),
       level(s.academic),
       level(s.conduct),
-      ...(year ? [s.title?.replace('Học sinh ', '') ?? '', s.promotion ? PROMOTION_LABEL[s.promotion] : ''] : []),
+      ...(year ? [s.title?.replace('Học sinh ', '') ?? '', promotionLabel(s.promotion, s.academic, s.conduct)] : []),
       s.absentDays,
     ]);
     const sum = r.summary;
@@ -350,7 +351,7 @@ export class ReportsService {
         text(
           [
             `Học tập: Tốt ${sum.academic.TOT}, Khá ${sum.academic.KHA}, Đạt ${sum.academic.DAT}, Chưa đạt ${sum.academic.CHUA_DAT}. Rèn luyện: Tốt ${sum.conduct.TOT}, Khá ${sum.conduct.KHA}, Đạt ${sum.conduct.DAT}, Chưa đạt ${sum.conduct.CHUA_DAT}.`,
-            ...(year ? [`Danh hiệu: ${TITLE_EXCELLENT} ${sum.titles[TITLE_EXCELLENT] ?? 0}, ${TITLE_GOOD} ${sum.titles[TITLE_GOOD] ?? 0}. Lên lớp ${sum.promotion.PROMOTED}, kiểm tra lại ${sum.promotion.RETEST}, ở lại lớp ${sum.promotion.RETAINED}.`] : []),
+            ...(year ? [`Danh hiệu: ${TITLE_EXCELLENT} ${sum.titles[TITLE_EXCELLENT] ?? 0}, ${TITLE_GOOD} ${sum.titles[TITLE_GOOD] ?? 0}. Lên lớp ${sum.promotion.PROMOTED}, kiểm tra lại hoặc rèn luyện hè ${sum.promotion.RETEST}, ở lại lớp ${sum.promotion.RETAINED}.`] : []),
             'Đ: Đạt; CĐ: Chưa đạt; MG: Miễn học.',
           ],
           { italic: true },
@@ -457,19 +458,49 @@ export class ReportsService {
     const name = new Map(classes.map((c) => [c.id, c.name]));
     const rows = await this.prisma.termResult.findMany({
       where: { academicYearId: year.id, semester: YEAR, classId: { in: classes.map((c) => c.id) }, promotion: q.promotion!, student: { status: StudentStatus.STUDYING } },
-      select: { classId: true, academic: true, conduct: true, absentDays: true, student: { select: { code: true, fullName: true } } },
+      select: {
+        classId: true,
+        promotion: true,
+        academic: true,
+        conduct: true,
+        absentDays: true,
+        academicAfterRetake: true,
+        conductAfterTraining: true,
+        promotionOverride: true,
+        student: { select: { code: true, fullName: true, subjectRetakes: { where: { academicYearId: year.id }, select: { subject: { select: { code: true, name: true } } } } } },
+      },
     });
     rows.sort((a, b) => order.get(a.classId)! - order.get(b.classId)! || a.student.fullName.localeCompare(b.student.fullName, 'vi'));
-    const reason = (r: (typeof rows)[number]) => [r.absentDays > 45 ? `nghỉ ${r.absentDays} buổi` : '', r.academic === ResultLevel.CHUA_DAT ? 'học tập Chưa đạt' : '', r.conduct === ResultLevel.CHUA_DAT ? 'rèn luyện Chưa đạt' : ''].filter(Boolean).join(', ');
+    const reason = (r: (typeof rows)[number]) => promotionReason(r, orderSubjects(r.student.subjectRetakes.map((x) => x.subject)).map((s) => s.name));
     const title = q.promotion === PromotionStatus.RETAINED ? 'Danh sách học sinh ở lại lớp' : q.promotion === PromotionStatus.RETEST ? 'Danh sách học sinh kiểm tra lại, rèn luyện trong hè' : 'Danh sách học sinh được lên lớp';
+    // Promoted lists add the after-review levels, which say how a retake or summer training ended.
+    const reviewed = rows.some((r) => r.academicAfterRetake || r.conductAfterTraining);
     return {
       fileName: slug(title),
       title,
       subtitles: [`Năm học ${year.name}`, this.scopeLine(q.gradeLevel)],
       blocks: [
         table(
-          [STT, { header: 'Họ và tên', width: 2.6 }, { header: 'Lớp', width: 0.7, align: 'center' }, { header: 'Học tập', width: 0.9, align: 'center', group: 'Kết quả' }, { header: 'Rèn luyện', width: 0.9, align: 'center', group: 'Kết quả' }, { header: 'Số buổi nghỉ', width: 0.8 }, { header: 'Lý do', width: 2.4 }],
-          rows.map((r, i) => [i + 1, r.student.fullName, name.get(r.classId) ?? '', level(r.academic), level(r.conduct), r.absentDays, reason(r)]),
+          [
+            STT,
+            { header: 'Họ và tên', width: 2.6 },
+            { header: 'Lớp', width: 0.7, align: 'center' },
+            { header: 'Học tập', width: 0.9, align: 'center', group: 'Kết quả cả năm' },
+            { header: 'Rèn luyện', width: 0.9, align: 'center', group: 'Kết quả cả năm' },
+            ...(reviewed ? ([{ header: 'Học tập', width: 0.9, align: 'center', group: 'Sau xét lại' }, { header: 'Rèn luyện', width: 0.9, align: 'center', group: 'Sau xét lại' }] as ReportColumn[]) : []),
+            { header: 'Số buổi nghỉ', width: 0.8 },
+            { header: q.promotion === PromotionStatus.PROMOTED ? 'Ghi chú' : 'Lý do', width: 2.6 },
+          ],
+          rows.map((r, i) => [
+            i + 1,
+            r.student.fullName,
+            name.get(r.classId) ?? '',
+            level(r.academic),
+            level(r.conduct),
+            ...(reviewed ? [level(r.academicAfterRetake), level(r.conductAfterTraining)] : []),
+            r.absentDays,
+            reason(r),
+          ]),
         ),
       ],
     };
@@ -501,9 +532,23 @@ export class ReportsService {
         ),
         text([
           `Danh hiệu: ${t.terms.year?.title ?? 'Không'}.`,
-          `Kết quả cuối năm: ${t.terms.year?.promotion ? PROMOTION_LABEL[t.terms.year.promotion] : 'chưa có'}.`,
+          ...(t.retakes.length
+            ? [`Kiểm tra lại: ${t.retakes.map((r) => `${r.name} ${r.assessment === AssessmentType.COMMENT ? (passedLabel(r.passed) ?? 'chưa có kết quả') : r.score === null ? 'chưa có điểm' : formatMark(r.score)}`).join('; ')}. Học tập sau kiểm tra lại: ${level(t.terms.year?.academicAfterRetake) || 'chưa có'}.`]
+            : []),
+          ...(t.training ? [`Rèn luyện trong hè: ${t.training.tasks} Đánh giá lại: ${level(t.training.result) || 'chưa đánh giá'}.`] : []),
+          `Kết quả cuối năm: ${t.terms.year?.promotion ? promotionLabel(t.terms.year.promotion, t.terms.year.academic, t.terms.year.conduct) : 'chưa có'}.`,
           `Nhận xét của giáo viên chủ nhiệm: ${t.terms.year?.homeroomComment ?? ''}`,
         ]),
+        ...(t.completion
+          ? [
+              text(
+                [
+                  `Xác nhận của Hiệu trưởng: học sinh đã hoàn thành chương trình giáo dục trung học cơ sở (Quyết định số ${t.completion.decisionNo} ngày ${dmy(t.completion.decidedOn)}${t.completion.registerNo ? `, số vào sổ ${t.completion.registerNo}` : ''}).`,
+                ],
+                { bold: true },
+              ),
+            ]
+          : []),
       ],
     };
   }
@@ -576,4 +621,5 @@ export const PARAM_LABEL: Record<ReportParam, string> = {
   to: 'đến ngày',
   status: 'tình trạng',
   promotion: 'kết quả lên lớp',
+  round: 'đợt xét',
 };

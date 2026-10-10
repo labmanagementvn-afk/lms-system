@@ -1,6 +1,6 @@
 import { join } from 'path';
 import type PDFKitDocument from 'pdfkit';
-import { cellText, dateLine, FieldsBlock, headerLayout, Letterhead, ReportDocument, TableBlock, TextBlock } from './document';
+import { cellText, dateLine, DEFAULT_COSIGNER_HINT, DEFAULT_SIGNER_HINT, FieldsBlock, headerLayout, Letterhead, pdfPages, ReportDocument, ReportPage, Signer, TableBlock, TextBlock } from './document';
 
 // Official A4 documents in Times-style type (Liberation Serif, metric-compatible
 // with Times New Roman and covering Vietnamese), laid out like MOET forms.
@@ -29,15 +29,19 @@ export async function renderPdf(report: ReportDocument, letterhead: Letterhead):
     doc.on('error', reject);
   });
 
-  drawLetterhead(doc, letterhead);
-  drawTitle(doc, report);
-  for (const block of report.blocks) {
-    if (block.type === 'table') drawTable(doc, block);
-    else if (block.type === 'text') drawText(doc, block);
-    else drawFields(doc, block);
-  }
-  if (report.signature !== false) drawSignature(doc, letterhead);
-  numberPages(doc);
+  pdfPages(report).forEach((page, i) => {
+    if (i > 0) doc.addPage();
+    drawLetterhead(doc, letterhead, page);
+    drawTitle(doc, page);
+    for (const block of page.blocks) {
+      if (block.type === 'table') drawTable(doc, block);
+      else if (block.type === 'text') drawText(doc, block);
+      else drawFields(doc, block);
+    }
+    if (page.signature !== false) drawSignature(doc, letterhead, page);
+  });
+  // Certificates are one sheet each and carry no page numbers.
+  if (report.pdf !== 'pages') numberPages(doc);
   doc.end();
   return done;
 }
@@ -50,7 +54,7 @@ function font(doc: Doc, f: Font, size = BODY) {
   return doc.font(f).fontSize(size);
 }
 
-function drawLetterhead(doc: Doc, lh: Letterhead) {
+function drawLetterhead(doc: Doc, lh: Letterhead, page: ReportPage) {
   const y = doc.y;
   const w = contentWidth(doc);
   const colW = w * 0.45;
@@ -62,10 +66,12 @@ function drawLetterhead(doc: Doc, lh: Letterhead) {
   }
   font(doc, 'B', 11).text(lh.schoolName.toUpperCase(), left(doc), ly, { width: colW, align: 'center' });
   underline(doc, left(doc) + colW / 2, doc.y + 1, Math.min(colW * 0.5, doc.widthOfString(lh.schoolName.toUpperCase()) * 0.6));
+  if (page.number) font(doc, 'R', 11).text(page.number, left(doc), doc.y + 6, { width: colW, align: 'center' });
   const leftEnd = doc.y;
   font(doc, 'B', 11).text('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM', rightX, y, { width: w * 0.55, align: 'center' });
   font(doc, 'B', 12).text('Độc lập - Tự do - Hạnh phúc', rightX, doc.y, { width: w * 0.55, align: 'center' });
   underline(doc, rightX + (w * 0.55) / 2, doc.y + 1, doc.widthOfString('Độc lập - Tự do - Hạnh phúc'));
+  if (page.dateAtTop) font(doc, 'I', 11).text(dateLine(lh.place, page.date ?? lh.date), rightX, doc.y + 6, { width: w * 0.55, align: 'center' });
   doc.y = Math.max(leftEnd, doc.y) + 14;
   doc.x = left(doc);
 }
@@ -74,17 +80,20 @@ function underline(doc: Doc, centerX: number, y: number, width: number) {
   doc.save().lineWidth(0.6).moveTo(centerX - width / 2, y).lineTo(centerX + width / 2, y).stroke().restore();
 }
 
-function drawTitle(doc: Doc, report: ReportDocument) {
-  font(doc, 'B', 14).text(report.title.toUpperCase(), left(doc), doc.y, { width: contentWidth(doc), align: 'center' });
-  for (const s of report.subtitles ?? []) font(doc, 'I', 11).text(s, left(doc), doc.y + 1, { width: contentWidth(doc), align: 'center' });
+function drawTitle(doc: Doc, page: ReportPage) {
+  if (!page.title && !page.subtitles?.length) return;
+  if (page.title) font(doc, 'B', 14).text(page.title.toUpperCase(), left(doc), doc.y, { width: contentWidth(doc), align: 'center' });
+  const f: Font = page.subtitleStyle === 'bold' ? 'B' : 'I';
+  for (const s of page.subtitles ?? []) font(doc, f, page.subtitleStyle === 'bold' ? 12 : 11).text(s, left(doc), doc.y + 1, { width: contentWidth(doc), align: 'center' });
   doc.y += 10;
 }
 
 function drawText(doc: Doc, block: TextBlock) {
   const f: Font = block.bold && block.italic ? 'BI' : block.bold ? 'B' : block.italic ? 'I' : 'R';
+  const size = block.size ?? 11;
   for (const line of block.lines) {
-    ensureSpace(doc, 16);
-    font(doc, f, 11).text(line, left(doc), doc.y, { width: contentWidth(doc) });
+    ensureSpace(doc, size + 5);
+    font(doc, f, size).text(line, left(doc), doc.y, { width: contentWidth(doc), align: block.align ?? 'left' });
   }
   doc.y += 6;
 }
@@ -162,14 +171,39 @@ function drawTable(doc: Doc, block: TableBlock) {
   doc.y += 10;
 }
 
-function drawSignature(doc: Doc, lh: Letterhead) {
-  ensureSpace(doc, 110);
+/** One signer block: title in capitals, the hint, room for the signature, the name. */
+function drawSigner(doc: Doc, s: Signer, x: number, y: number, w: number, hint: string) {
+  font(doc, 'B', 11).text(s.title.toUpperCase(), x, y, { width: w, align: 'center' });
+  font(doc, 'I', 10).text(s.hint ?? hint, x, doc.y, { width: w, align: 'center' });
+  if (s.name) font(doc, 'B', 11).text(s.name, x, doc.y + 50, { width: w, align: 'center' });
+  return doc.y;
+}
+
+function drawSignature(doc: Doc, lh: Letterhead, page: ReportPage) {
+  ensureSpace(doc, 110 + (page.footnote?.length ?? 0) * 4);
   const w = contentWidth(doc) * 0.45;
   const x = left(doc) + contentWidth(doc) - w;
-  font(doc, 'I', 11).text(dateLine(lh.place, lh.date), x, doc.y + 4, { width: w, align: 'center' });
-  font(doc, 'B', 11).text((lh.signerTitle ?? 'Hiệu trưởng').toUpperCase(), x, doc.y + 2, { width: w, align: 'center' });
-  font(doc, 'I', 10).text('(Ký, ghi rõ họ tên và đóng dấu)', x, doc.y, { width: w, align: 'center' });
-  if (lh.signerName) font(doc, 'B', 11).text(lh.signerName, x, doc.y + 50, { width: w, align: 'center' });
+  const top = doc.y + 4;
+  let y = top;
+  if (!page.dateAtTop) {
+    font(doc, 'I', 11).text(dateLine(lh.place, page.date ?? lh.date), x, y, { width: w, align: 'center' });
+    y = doc.y + 2;
+  }
+  const signer: Signer = page.signer ?? { title: lh.signerTitle ?? 'Hiệu trưởng', name: lh.signerName };
+  let end = drawSigner(doc, signer, x, y, w, DEFAULT_SIGNER_HINT);
+  if (page.cosigner) {
+    end = Math.max(end, drawSigner(doc, page.cosigner, left(doc), y, w, DEFAULT_COSIGNER_HINT));
+  } else if (page.footnote?.length) {
+    // "Nơi nhận:" and its lines, bold italic then small, as in Nghị định 30/2020.
+    let fy = top + 2;
+    page.footnote.forEach((line, i) => {
+      font(doc, i === 0 ? 'BI' : 'R', i === 0 ? 11 : 10).text(line, left(doc), fy, { width: w });
+      fy = doc.y;
+    });
+    end = Math.max(end, fy);
+  }
+  doc.y = end;
+  doc.x = left(doc);
 }
 
 function numberPages(doc: Doc) {

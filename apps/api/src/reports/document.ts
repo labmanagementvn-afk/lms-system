@@ -25,6 +25,10 @@ export interface TextBlock {
   lines: string[];
   bold?: boolean;
   italic?: boolean;
+  /** Defaults to left; certificates centre their lines. */
+  align?: 'left' | 'center' | 'justify';
+  /** Point size in the PDF; defaults to 11. */
+  size?: number;
 }
 
 /** Label/value pairs printed two per line (student details on a transcript). */
@@ -35,15 +39,52 @@ export interface FieldsBlock {
 
 export type ReportBlock = TableBlock | TextBlock | FieldsBlock;
 
-export interface ReportDocument {
-  /** File name without extension, ASCII. */
-  fileName: string;
+/** Who signs: the title in capitals, the hint in brackets under it, then the name. */
+export interface Signer {
+  title: string;
+  name?: string | null;
+  /** Defaults to "(Ký, ghi rõ họ tên và đóng dấu)" for the signer and "(Ký, ghi rõ họ tên)" for a cosigner. */
+  hint?: string;
+}
+
+/** One printed document: letterhead, title, blocks and the signature. */
+export interface ReportPage {
+  /** Empty for pages whose heading is drawn by their own text blocks (certificates). */
   title: string;
   subtitles?: string[];
-  orientation?: 'portrait' | 'landscape';
+  /** Subtitles print in italics unless bold ("Về việc ..." under a decision's title). */
+  subtitleStyle?: 'italic' | 'bold';
+  /** "Số: 01/QĐ-HĐXCN" under the school name. */
+  number?: string;
+  /** The document's own date when it is not today (a decision prints the day it was signed). */
+  date?: Date;
+  /** Puts the place-and-date line under the national motto, as decisions do, instead of above the signer. */
+  dateAtTop?: boolean;
   blocks: ReportBlock[];
   /** Defaults to true. */
   signature?: boolean;
+  /** Replaces the letterhead's signer on this page. */
+  signer?: Signer;
+  /** A second signer on the left: whoever drew up the list, the secretary of a meeting. */
+  cosigner?: Signer;
+  /** Lines at the bottom left beside the signer when there is no cosigner ("Nơi nhận:", "Số vào sổ"). */
+  footnote?: string[];
+}
+
+export interface ReportDocument extends ReportPage {
+  /** File name without extension, ASCII. */
+  fileName: string;
+  orientation?: 'portrait' | 'landscape';
+  /** Further documents, each from a new sheet with its own letterhead and signer: a certificate per student, the list attached to a decision. */
+  pages?: ReportPage[];
+  /** 'pages' prints only `pages` to PDF (certificates); the main blocks stay the Excel sheet and the preview. Defaults to 'all'. */
+  pdf?: 'all' | 'pages';
+}
+
+/** The pages the PDF prints, in order. */
+export function pdfPages(report: ReportDocument): ReportPage[] {
+  if (report.pdf === 'pages' && report.pages?.length) return report.pages;
+  return [report, ...(report.pdf === 'pages' ? [] : (report.pages ?? []))];
 }
 
 /** Who issues the document: the header on the left and the signer at the bottom right. */
@@ -57,7 +98,10 @@ export interface Letterhead {
 }
 
 export const table = (columns: ReportColumn[], rows: Cell[][], caption?: string): TableBlock => ({ type: 'table', columns, rows, caption });
-export const text = (lines: string[], style: { bold?: boolean; italic?: boolean } = {}): TextBlock => ({ type: 'text', lines, ...style });
+export const text = (lines: string[], style: Omit<TextBlock, 'type' | 'lines'> = {}): TextBlock => ({ type: 'text', lines, ...style });
+
+export const DEFAULT_SIGNER_HINT = '(Ký, ghi rõ họ tên và đóng dấu)';
+export const DEFAULT_COSIGNER_HINT = '(Ký, ghi rõ họ tên)';
 
 /** Printed text of a cell; numbers use the Vietnamese decimal comma. */
 export const cellText = (v: Cell): string => (v === null || v === undefined ? '' : typeof v === 'number' ? String(v).replace('.', ',') : v);

@@ -11,6 +11,7 @@ import { seedBus } from './seed/bus';
 import { seedConduct } from './seed/conduct';
 import { loadContext, SeedContext } from './seed/context';
 import { seedDistrict } from './seed/district';
+import { seedEndOfYear } from './seed/end-of-year';
 import { seedFinance } from './seed/finance';
 import { seedGradebookControl } from './seed/gradebook-control';
 import { seedGrades } from './seed/grades';
@@ -241,6 +242,8 @@ async function main() {
   await seedDistrict(prisma, ctx);
   // Phase 6: gradebook control and the report letterhead.
   await seedGradebookControl(prisma, ctx, { fresh: true });
+  // Phase 7: a grade 9 class at the end of the year, in the summer review and the THCS completion review.
+  await seedEndOfYear(prisma, ctx);
 }
 
 /**
@@ -255,12 +258,18 @@ async function topUp(schoolId: string) {
       console.log('Demo school already exists and was changed too much to top up; nothing to do.');
       return;
     }
+    let added = false;
     if (!(await prisma.gradeEntryWindow.findFirst({ where: { schoolId }, select: { id: true } }))) {
       await seedGradebookControl(prisma, ctx, { fresh: false });
       console.log('Demo school: added gradebook control data (phase 6).');
-      return;
+      added = true;
     }
-    console.log('Demo school already exists; nothing to do.');
+    if (!ctx.classes['9A1'] && !(await prisma.completionRound.findFirst({ where: { schoolId }, select: { id: true } }))) {
+      await seedEndOfYear(prisma, ctx);
+      console.log('Demo school: added class 9A1 with the summer review and the THCS completion review (phase 7).');
+      added = true;
+    }
+    if (!added) console.log('Demo school already exists; nothing to do.');
   } catch (e) {
     console.warn('Demo top-up skipped:', (e as Error).message);
   }

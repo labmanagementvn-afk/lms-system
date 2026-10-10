@@ -3,7 +3,7 @@ import { recomputeResults } from '../../src/grades/results';
 import { SeedContext } from './context';
 
 // Subject code -> [assessment, regular marks per semester, periods per year, teacher code].
-const SUBJECTS: Record<string, [AssessmentType, number, number, string]> = {
+export const SUBJECTS: Record<string, [AssessmentType, number, number, string]> = {
   TOAN: [AssessmentType.SCORE, 4, 140, 'GV001'],
   VAN: [AssessmentType.SCORE, 4, 140, 'GV002'],
   ANH: [AssessmentType.SCORE, 3, 105, 'GV003'],

@@ -3,10 +3,17 @@ import { AssessmentType, PromotionStatus, ResultLevel } from '@prisma/client';
 import {
   academicLevel,
   assertMark,
+  completionGaps,
+  CompletionInput,
   formatMark,
   isValidMark,
+  needsRetake,
   promotionFor,
+  PromotionFacts,
+  promotionReason,
   regularCountFor,
+  retakeOutcome,
+  reviewKind,
   roundScore,
   semesterAverage,
   semesterPassed,
@@ -15,6 +22,7 @@ import {
   TITLE_GOOD,
   titleFor,
   yearAverage,
+  yearConduct,
   yearPassed,
 } from './tt22';
 
@@ -146,6 +154,123 @@ describe('TT22 rules', () => {
       expect(promotionFor(ResultLevel.TOT, ResultLevel.TOT, 46)).toBe(PromotionStatus.RETAINED);
       expect(promotionFor(null, ResultLevel.TOT, 0)).toBeNull();
       expect(promotionFor(ResultLevel.TOT, null, 0)).toBeNull();
+    });
+  });
+
+  describe('year conduct', () => {
+    const { TOT, KHA, DAT, CHUA_DAT } = ResultLevel;
+
+    it('follows Điều 8: the second semester weighs more', () => {
+      // [HK1, HK2, year]
+      const cases: [ResultLevel, ResultLevel, ResultLevel][] = [
+        [TOT, TOT, TOT],
+        [KHA, TOT, TOT],
+        [DAT, TOT, KHA],
+        [CHUA_DAT, TOT, KHA],
+        [TOT, KHA, KHA],
+        [DAT, KHA, KHA],
+        [CHUA_DAT, KHA, DAT],
+        [TOT, DAT, KHA],
+        [KHA, DAT, DAT],
+        [CHUA_DAT, DAT, DAT],
+        [TOT, CHUA_DAT, CHUA_DAT],
+        [CHUA_DAT, CHUA_DAT, CHUA_DAT],
+      ];
+      for (const [hk1, hk2, year] of cases) expect([hk1, hk2, yearConduct(hk1, hk2)]).toEqual([hk1, hk2, year]);
+    });
+
+    it('waits for both semesters', () => {
+      expect(yearConduct(TOT, null)).toBeNull();
+      expect(yearConduct(undefined, TOT)).toBeNull();
+    });
+  });
+
+  describe('summer review', () => {
+    const { TOT, KHA, DAT, CHUA_DAT } = ResultLevel;
+
+    it('keeps one failed level on RETEST until the review gives its replacement', () => {
+      expect(promotionFor(CHUA_DAT, KHA, 0, { academicAfterRetake: null })).toBe(PromotionStatus.RETEST);
+      expect(promotionFor(CHUA_DAT, KHA, 0, { academicAfterRetake: DAT })).toBe(PromotionStatus.PROMOTED);
+      expect(promotionFor(CHUA_DAT, KHA, 0, { academicAfterRetake: CHUA_DAT })).toBe(PromotionStatus.RETAINED);
+      expect(promotionFor(TOT, CHUA_DAT, 0, { conductAfterTraining: DAT })).toBe(PromotionStatus.PROMOTED);
+      expect(promotionFor(TOT, CHUA_DAT, 0, { conductAfterTraining: CHUA_DAT })).toBe(PromotionStatus.RETAINED);
+      // Only the review of the failed level counts.
+      expect(promotionFor(CHUA_DAT, KHA, 0, { conductAfterTraining: TOT })).toBe(PromotionStatus.RETEST);
+      // No review lifts both failures or too many absences.
+      expect(promotionFor(CHUA_DAT, CHUA_DAT, 0, { academicAfterRetake: DAT, conductAfterTraining: DAT })).toBe(PromotionStatus.RETAINED);
+      expect(promotionFor(CHUA_DAT, KHA, 46, { academicAfterRetake: DAT })).toBe(PromotionStatus.RETAINED);
+    });
+
+    it('sends failed learning to retakes and failed conduct to summer training', () => {
+      expect(reviewKind(CHUA_DAT, DAT)).toBe('RETAKE');
+      expect(reviewKind(KHA, CHUA_DAT)).toBe('TRAINING');
+      expect(reviewKind(CHUA_DAT, CHUA_DAT)).toBeNull();
+      expect(reviewKind(TOT, TOT)).toBeNull();
+      expect(reviewKind(CHUA_DAT, null)).toBeNull();
+    });
+
+    it('retakes comment subjects at Chưa đạt and score subjects under 5.0', () => {
+      expect(needsRetake(score(4.9))).toBe(true);
+      expect(needsRetake(score(5.0))).toBe(false);
+      expect(needsRetake(score(null))).toBe(false);
+      expect(needsRetake(comment(false))).toBe(true);
+      expect(needsRetake(comment(true))).toBe(false);
+      expect(retakeOutcome(AssessmentType.SCORE, { score: 6.5, passed: null })).toEqual(score(6.5));
+      expect(retakeOutcome(AssessmentType.SCORE, { score: null, passed: null })).toBeNull();
+      expect(retakeOutcome(AssessmentType.COMMENT, { score: null, passed: true })).toEqual(comment(true));
+      expect(retakeOutcome(AssessmentType.COMMENT, { score: null, passed: null })).toBeNull();
+    });
+
+    it('explains every outcome that is not a plain promotion', () => {
+      const facts = (t: Partial<PromotionFacts>): PromotionFacts => ({
+        promotion: PromotionStatus.RETEST,
+        academic: KHA,
+        conduct: KHA,
+        absentDays: 0,
+        academicAfterRetake: null,
+        conductAfterTraining: null,
+        promotionOverride: null,
+        ...t,
+      });
+      expect(promotionReason(facts({ promotion: PromotionStatus.PROMOTED }))).toBe('');
+      expect(promotionReason(facts({ academic: CHUA_DAT }), ['Toán', 'Tiếng Anh'])).toBe('Kiểm tra lại Toán, Tiếng Anh');
+      expect(promotionReason(facts({ academic: CHUA_DAT, academicAfterRetake: DAT }), ['Toán'])).toBe('Lên lớp sau kiểm tra lại Toán');
+      expect(promotionReason(facts({ academic: CHUA_DAT, academicAfterRetake: CHUA_DAT }), ['Toán'])).toBe('Kiểm tra lại Toán, học tập vẫn Chưa đạt');
+      expect(promotionReason(facts({ conduct: CHUA_DAT }))).toBe('Rèn luyện trong hè');
+      expect(promotionReason(facts({ conduct: CHUA_DAT, conductAfterTraining: DAT }))).toBe('Lên lớp sau rèn luyện hè');
+      expect(promotionReason(facts({ conduct: CHUA_DAT, conductAfterTraining: CHUA_DAT }))).toBe('Rèn luyện hè, rèn luyện vẫn Chưa đạt');
+      expect(promotionReason(facts({ academic: CHUA_DAT, conduct: CHUA_DAT }))).toBe('Học tập và rèn luyện cả năm Chưa đạt');
+      expect(promotionReason(facts({ absentDays: 48 }))).toBe('Nghỉ 48 buổi (quá 45 buổi)');
+      expect(promotionReason(facts({ promotionOverride: PromotionStatus.PROMOTED }))).toBe('Do nhà trường quyết định');
+    });
+  });
+
+  describe('THCS completion', () => {
+    const { KHA, DAT, CHUA_DAT } = ResultLevel;
+    const input = (c: Partial<CompletionInput>): CompletionInput => ({ academic: KHA, conduct: DAT, absentDays: 3, failedSubjects: [], birthYear: 2012, reviewYear: 2027, dossierComplete: true, ...c });
+
+    it('recognises a student who meets every condition', () => {
+      expect(completionGaps(input({}))).toEqual([]);
+      // 21 by year of birth is still allowed.
+      expect(completionGaps(input({ birthYear: 2006 }))).toEqual([]);
+    });
+
+    it('lists every condition a student misses', () => {
+      expect(completionGaps(input({ conduct: CHUA_DAT, academic: CHUA_DAT, failedSubjects: ['Nghệ thuật'], absentDays: 46, birthYear: 2005, dossierComplete: false }))).toEqual([
+        'Rèn luyện cả năm Chưa đạt',
+        'Học tập cả năm Chưa đạt',
+        'Chưa đạt môn Nghệ thuật',
+        'Nghỉ 46 buổi (quá 45 buổi)',
+        'Quá 21 tuổi',
+        'Hồ sơ chưa đủ',
+      ]);
+      expect(completionGaps(input({ conduct: null, academic: null, birthYear: null }))).toEqual(['Chưa có kết quả rèn luyện cả năm', 'Chưa có kết quả học tập cả năm', 'Chưa có ngày sinh']);
+    });
+
+    it('follows a promotion the school set by hand', () => {
+      expect(completionGaps(input({ academic: CHUA_DAT, promotionOverride: PromotionStatus.PROMOTED }))).toEqual([]);
+      expect(completionGaps(input({ promotionOverride: PromotionStatus.RETAINED }))).toEqual(['Ở lại lớp theo quyết định của nhà trường']);
+      expect(completionGaps(input({ promotionOverride: PromotionStatus.RETEST, dossierComplete: false }))).toEqual(['Đang chờ kiểm tra lại, rèn luyện hè', 'Hồ sơ chưa đủ']);
     });
   });
 });

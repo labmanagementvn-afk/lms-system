@@ -9,7 +9,7 @@ import { BookQuery, LockDto, ResultsQuery, SaveBookDto, ScoreEntryDto, SubjectSe
 import { cellKey, columnLabel, GradeControlService, lockCovers, Visibility } from './control.service';
 import { readXlsx } from '../reports/xlsx';
 import { DEFAULT_SETTING, loadSettings, MarkSheet, num, orderSubjects, recomputeResults, sheetOutcome, SubjectSettingLike, toMarkSheet } from './results';
-import { assertMark, formatMark, passedLabel, regularCountFor, TITLE_EXCELLENT, TITLE_GOOD, YEAR } from './tt22';
+import { assertMark, formatMark, passedLabel, regularCountFor, reviewKind, TITLE_EXCELLENT, TITLE_GOOD, YEAR } from './tt22';
 
 export const LOCKED_MESSAGE = 'Sổ điểm học kỳ này đã khóa';
 const HOMEROOM_ONLY = 'Chỉ giáo viên chủ nhiệm lớp mới được sửa kết quả';
@@ -20,7 +20,18 @@ const CSV_OPTIONS = { bom: true, delimiter: ';' as const };
 const studentSelect = { id: true, code: true, fullName: true } as const;
 const subjectSelect = { id: true, code: true, name: true } as const;
 const classSelect = { id: true, name: true, gradeLevel: true, academicYearId: true, homeroomTeacherId: true } as const;
-const termSelect = { semester: true, academic: true, conduct: true, title: true, promotion: true, absentDays: true, homeroomComment: true } as const;
+const termSelect = {
+  semester: true,
+  academic: true,
+  conduct: true,
+  title: true,
+  promotion: true,
+  absentDays: true,
+  homeroomComment: true,
+  academicAfterRetake: true,
+  conductAfterTraining: true,
+  promotionOverride: true,
+} as const;
 
 type ClassRef = Prisma.ClassGetPayload<{ select: typeof classSelect }>;
 type SubjectRef = Prisma.SubjectGetPayload<{ select: typeof subjectSelect }>;
@@ -454,6 +465,14 @@ export class GradesService {
         promotion: term?.promotion ?? null,
         absentDays: term?.absentDays ?? 0,
         homeroomComment: term?.homeroomComment ?? null,
+        ...(semester === YEAR
+          ? {
+              academicAfterRetake: term?.academicAfterRetake ?? null,
+              conductAfterTraining: term?.conductAfterTraining ?? null,
+              promotionSetByHand: !!term?.promotionOverride,
+              review: term?.promotion === PromotionStatus.RETEST ? reviewKind(term.academic, term.conduct) : null,
+            }
+          : {}),
       };
     });
     return {
@@ -492,23 +511,28 @@ export class GradesService {
     if (!enrollment) throw new NotFoundException('Không tìm thấy học sinh trong năm học hiện tại');
     const klass = enrollment.class;
     await this.assertHomeroom(user, klass);
-    if (dto.promotion && dto.semester !== YEAR) throw new BadRequestException('Kết quả lên lớp chỉ áp dụng cho cả năm');
+    if (dto.promotion !== undefined && dto.semester !== YEAR) throw new BadRequestException('Kết quả lên lớp chỉ áp dụng cho cả năm');
 
     const data: Prisma.TermResultUncheckedUpdateInput = {};
     if (dto.absentDays !== undefined) data.absentDays = dto.absentDays;
     if (dto.homeroomComment !== undefined) data.homeroomComment = dto.homeroomComment;
+    // A promotion set by hand outlives later recomputes until it is cleared with null.
+    if (dto.promotion !== undefined) data.promotionOverride = dto.promotion;
     await this.prisma.termResult.upsert({
       where: { studentId_academicYearId_semester: { studentId, academicYearId: year.id, semester: dto.semester } },
-      create: { schoolId, academicYearId: year.id, semester: dto.semester, classId: klass.id, studentId, absentDays: dto.absentDays ?? 0, homeroomComment: dto.homeroomComment ?? null },
+      create: {
+        schoolId,
+        academicYearId: year.id,
+        semester: dto.semester,
+        classId: klass.id,
+        studentId,
+        absentDays: dto.absentDays ?? 0,
+        homeroomComment: dto.homeroomComment ?? null,
+        promotionOverride: dto.promotion ?? null,
+      },
       update: data,
     });
     await this.recomputeTerm(schoolId, year.id, dto.semester, klass.id, [studentId]);
-    if (dto.promotion) {
-      await this.prisma.termResult.update({
-        where: { studentId_academicYearId_semester: { studentId, academicYearId: year.id, semester: YEAR } },
-        data: { promotion: dto.promotion },
-      });
-    }
     const results = await this.buildResults(schoolId, klass, dto.semester);
     const row = results.students.find((s) => s.id === studentId);
     if (!row) throw new NotFoundException('Không tìm thấy học sinh');
@@ -543,7 +567,7 @@ export class GradesService {
       ...s.subjects.map((x) => (x.exempt ? 'MG' : x.assessment === AssessmentType.COMMENT ? (passedLabel(x.passed) ?? '') : x.average === null ? '' : formatMark(x.average))),
       level(s.academic),
       level(s.conduct),
-      ...(year ? [s.title ?? '', s.promotion ? PROMOTION_LABEL[s.promotion] : ''] : []),
+      ...(year ? [s.title ?? '', promotionLabel(s.promotion, s.academic, s.conduct)] : []),
       s.absentDays,
       s.homeroomComment ?? '',
     ]);
@@ -560,7 +584,7 @@ export class GradesService {
       ? await this.prisma.academicYear.findFirst({ where: { id: academicYearId, schoolId }, select: { id: true, name: true } })
       : await this.years.current(schoolId);
     if (!year) throw new NotFoundException('Không tìm thấy năm học');
-    const [school, enrollment, subjects, results, terms] = await Promise.all([
+    const [school, enrollment, subjects, results, terms, retakes, training, completion] = await Promise.all([
       this.prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { name: true, address: true } }),
       this.prisma.enrollment.findFirst({
         where: { studentId, academicYearId: year.id },
@@ -569,6 +593,12 @@ export class GradesService {
       this.subjectsWithSettings(schoolId),
       this.prisma.subjectResult.findMany({ where: { studentId, academicYearId: year.id }, select: { subjectId: true, semester: true, average: true, passed: true, exempt: true } }),
       this.prisma.termResult.findMany({ where: { studentId, academicYearId: year.id }, select: termSelect }),
+      this.prisma.subjectRetake.findMany({ where: { studentId, academicYearId: year.id }, select: { subjectId: true, score: true, passed: true, note: true } }),
+      this.prisma.summerTraining.findUnique({ where: { studentId_academicYearId: { studentId, academicYearId: year.id } }, select: { tasks: true, result: true, comment: true } }),
+      this.prisma.completionRecord.findUnique({
+        where: { studentId_academicYearId: { studentId, academicYearId: year.id } },
+        select: { registerNo: true, recognizedAt: true, round: { select: { round: true, decisionNo: true, decidedOn: true, signerTitle: true, signerName: true } } },
+      }),
     ]);
     const cell = (subjectId: string, semester: number) => {
       const r = results.find((x) => x.subjectId === subjectId && x.semester === semester);
@@ -583,6 +613,15 @@ export class GradesService {
       subjects: subjects.map((s) => ({ subjectId: s.id, code: s.code, name: s.name, assessment: s.assessment, hk1: cell(s.id, 1), hk2: cell(s.id, 2), year: cell(s.id, YEAR) })),
       terms: { hk1: term(1), hk2: term(2), year: term(YEAR) },
       homeroomTeacher: enrollment?.class?.homeroomTeacher ?? null,
+      // The summer review (kiểm tra lại, rèn luyện hè) and the principal's confirmation of THCS completion.
+      retakes: orderSubjects(subjects)
+        .filter((s) => retakes.some((r) => r.subjectId === s.id))
+        .map((s) => {
+          const r = retakes.find((x) => x.subjectId === s.id)!;
+          return { subjectId: s.id, name: s.name, assessment: s.assessment, score: num(r.score), passed: r.passed, note: r.note };
+        }),
+      training,
+      completion: completion?.round ? { ...completion.round, registerNo: completion.registerNo, recognizedAt: completion.recognizedAt } : null,
     };
   }
 
@@ -647,6 +686,13 @@ export class GradesService {
 
 export const LEVEL_LABEL: Record<ResultLevel, string> = { TOT: 'Tốt', KHA: 'Khá', DAT: 'Đạt', CHUA_DAT: 'Chưa đạt' };
 export const PROMOTION_LABEL: Record<PromotionStatus, string> = { PROMOTED: 'Được lên lớp', RETEST: 'Kiểm tra lại', RETAINED: 'Ở lại lớp' };
+
+/** The promotion as printed: a RETEST student whose conduct failed does summer training rather than retakes. */
+export function promotionLabel(promotion: PromotionStatus | null | undefined, academic: ResultLevel | null | undefined, conduct: ResultLevel | null | undefined): string {
+  if (!promotion) return '';
+  if (promotion === PromotionStatus.RETEST && reviewKind(academic, conduct) === 'TRAINING') return 'Rèn luyện hè';
+  return PROMOTION_LABEL[promotion];
+}
 
 type StudentGrades = Awaited<ReturnType<GradesService['fullStudentGrades']>>;
 type Term = NonNullable<StudentGrades['term']>;

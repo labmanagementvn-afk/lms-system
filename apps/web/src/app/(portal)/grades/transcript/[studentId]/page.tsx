@@ -22,6 +22,8 @@ interface Term {
   promotion: string | null;
   absentDays: number;
   homeroomComment: string | null;
+  academicAfterRetake?: string | null;
+  conductAfterTraining?: string | null;
 }
 interface Transcript {
   school: { name: string; address: string | null };
@@ -31,11 +33,20 @@ interface Transcript {
   subjects: { subjectId: string; code: string; name: string; assessment: 'SCORE' | 'COMMENT'; hk1: Cell; hk2: Cell; year: Cell }[];
   terms: { hk1: Term | null; hk2: Term | null; year: Term | null };
   homeroomTeacher: { id: string; fullName: string } | null;
+  retakes: { subjectId: string; name: string; assessment: 'SCORE' | 'COMMENT'; score: number | null; passed: boolean | null; note: string | null }[];
+  training: { tasks: string; result: string | null; comment: string | null } | null;
+  completion: { round: number; decisionNo: string | null; decidedOn: string | null; signerTitle: string | null; signerName: string | null; registerNo: number | null } | null;
 }
 
 const cell = (assessment: string, c: Cell) => (assessment === 'COMMENT' ? (passedLabel(c.passed) === '—' ? '' : passedLabel(c.passed)) : c.average === null ? '' : fmtMark(c.average));
 const level = (l: string | null | undefined) => (l ? RESULT_LEVEL[l]?.label : '');
 const dmy = (iso: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '');
+/** Lên lớp as printed: a RETEST student whose conduct failed does summer training. */
+const promotionText = (term: Term | null) => {
+  if (!term?.promotion) return '';
+  if (term.promotion === 'RETEST' && term.conduct === 'CHUA_DAT' && term.academic && term.academic !== 'CHUA_DAT') return 'Rèn luyện hè';
+  return PROMOTION_STATUS[term.promotion]?.label ?? '';
+};
 
 const PRINT_CSS = `
   @media print {
@@ -153,16 +164,43 @@ export default function TranscriptPage() {
                 <td className="num">{level(term?.conduct)}</td>
                 <td className="num">{term?.absentDays ?? ''}</td>
                 <td className="num">{term?.title ?? ''}</td>
-                <td className="num">{term?.promotion ? PROMOTION_STATUS[term.promotion]?.label : ''}</td>
+                <td className="num">{promotionText(term)}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
+        {data.retakes.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <b>Kiểm tra lại:</b>{' '}
+            {data.retakes.map((r) => `${r.name}: ${r.assessment === 'COMMENT' ? (r.passed === null ? 'chưa có kết quả' : passedLabel(r.passed)) : r.score === null ? 'chưa có kết quả' : fmtMark(r.score)}`).join('; ')}
+            {t.year?.academicAfterRetake && `. Kết quả học tập sau kiểm tra lại: ${level(t.year.academicAfterRetake)}`}.
+          </div>
+        )}
+        {data.training && (
+          <div style={{ marginTop: 8 }}>
+            <div>
+              <b>Rèn luyện trong hè:</b> {data.training.tasks}
+            </div>
+            {data.training.result && (
+              <div>
+                <b>Đánh giá lại sau rèn luyện hè:</b> {level(data.training.result)}
+                {data.training.comment ? ` (${data.training.comment})` : ''}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ marginTop: 12 }}>
           <b>Nhận xét của giáo viên chủ nhiệm:</b>
           <div style={{ minHeight: 48, whiteSpace: 'pre-wrap' }}>{t.year?.homeroomComment ?? t.hk2?.homeroomComment ?? t.hk1?.homeroomComment ?? ''}</div>
         </div>
+
+        {data.completion && (
+          <div style={{ marginTop: 12, fontWeight: 700 }}>
+            Xác nhận của Hiệu trưởng: Học sinh đã hoàn thành chương trình giáo dục trung học cơ sở (Quyết định số {data.completion.decisionNo} ngày {dmy(data.completion.decidedOn)}, số vào sổ {data.completion.registerNo}).
+          </div>
+        )}
 
         <div className="sign">
           <div>

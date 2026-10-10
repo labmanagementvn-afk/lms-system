@@ -31,6 +31,11 @@ interface Row {
   promotion: string | null;
   absentDays: number;
   homeroomComment: string | null;
+  // Year only: the summer review and a promotion the school set by hand.
+  academicAfterRetake?: string | null;
+  conductAfterTraining?: string | null;
+  promotionSetByHand?: boolean;
+  review?: 'RETAKE' | 'TRAINING' | null;
 }
 interface Results {
   class: { id: string; name: string; gradeLevel: number; homeroomTeacherId: string | null };
@@ -109,7 +114,7 @@ export default function ResultsPage() {
 
   function openEdit(row: Row) {
     setEditing(row);
-    form.setFieldsValue({ absentDays: row.absentDays, homeroomComment: row.homeroomComment ?? '', promotion: row.promotion ?? undefined });
+    form.setFieldsValue({ absentDays: row.absentDays, homeroomComment: row.homeroomComment ?? '', promotion: row.promotionSetByHand ? row.promotion : undefined });
   }
   async function submitEdit() {
     const v = await form.validateFields();
@@ -119,7 +124,8 @@ export default function ResultsPage() {
       async () => {
         await api(`/grades/results/${editing.id}`, {
           method: 'PUT',
-          body: { semester, absentDays: v.absentDays ?? 0, homeroomComment: v.homeroomComment?.trim() || null, ...(year && v.promotion ? { promotion: v.promotion } : {}) },
+          // An empty promotion clears the one set by hand, so the system decides again.
+          body: { semester, absentDays: v.absentDays ?? 0, homeroomComment: v.homeroomComment?.trim() || null, ...(year ? { promotion: v.promotion ?? null } : {}) },
         });
         await mutate();
         setEditing(null);
@@ -142,7 +148,28 @@ export default function ResultsPage() {
     ...(year
       ? ([
           { title: 'Danh hiệu', width: 150, render: (_, r) => r.title ?? <Typography.Text type="secondary">—</Typography.Text> },
-          { title: 'Lên lớp', width: 120, align: 'center', render: (_, r) => <PromotionTag status={r.promotion} /> },
+          {
+            title: 'Lên lớp',
+            width: 150,
+            align: 'center',
+            render: (_, r) => (
+              <>
+                <Space size={4}>
+                  <PromotionTag status={r.promotion} review={r.review} />
+                  {r.promotionSetByHand && (
+                    <Tooltip title="Nhà trường quyết định">
+                      <EditOutlined style={{ color: '#888' }} />
+                    </Tooltip>
+                  )}
+                </Space>
+                {(r.academicAfterRetake || r.conductAfterTraining) && (
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>
+                    {r.academicAfterRetake ? `Học tập sau KTL: ${RESULT_LEVEL[r.academicAfterRetake]?.label}` : `Rèn luyện sau hè: ${RESULT_LEVEL[r.conductAfterTraining!]?.label}`}
+                  </div>
+                )}
+              </>
+            ),
+          },
         ] as ColumnsType<Row>)
       : []),
     { title: 'Nghỉ', width: 60, align: 'center', dataIndex: 'absentDays' },
@@ -192,6 +219,11 @@ export default function ResultsPage() {
             <Button icon={<DownloadOutlined />} onClick={exportCsv} loading={busy === 'export'} disabled={!data}>
               Xuất CSV
             </Button>
+            {year && (
+              <Link href="/grades/review">
+                <Button>Kiểm tra lại & rèn luyện hè</Button>
+              </Link>
+            )}
           </Space>
           {data && (
             <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
@@ -207,7 +239,7 @@ export default function ResultsPage() {
                   ))}
                   {['PROMOTED', 'RETEST', 'RETAINED'].map((p) => (
                     <Tag key={p} color={PROMOTION_STATUS[p].color} style={{ margin: 0 }}>
-                      {PROMOTION_STATUS[p].label} {data.summary.promotion[p] ?? 0}
+                      {p === 'RETEST' ? 'Kiểm tra lại, rèn luyện hè' : PROMOTION_STATUS[p].label} {data.summary.promotion[p] ?? 0}
                     </Tag>
                   ))}
                 </Space>
@@ -226,8 +258,12 @@ export default function ResultsPage() {
             <Input.TextArea rows={3} maxLength={2000} showCount />
           </Form.Item>
           {year && (
-            <Form.Item name="promotion" label="Kết quả lên lớp" extra="Để trống để hệ thống tự xét theo kết quả học tập và rèn luyện">
-              <Select allowClear options={options(Object.fromEntries(Object.entries(PROMOTION_STATUS).map(([k, v]) => [k, v.label])))} placeholder="Tự động" />
+            <Form.Item name="promotion" label="Kết quả lên lớp" extra="Để trống để hệ thống tự xét theo kết quả học tập, rèn luyện, kiểm tra lại và rèn luyện hè">
+              <Select
+                allowClear
+                options={options(Object.fromEntries(Object.entries(PROMOTION_STATUS).map(([k, v]) => [k, v.label])))}
+                placeholder={`Tự động${editing?.promotion && !editing.promotionSetByHand ? ` (${PROMOTION_STATUS[editing.promotion]?.label})` : ''}`}
+              />
             </Form.Item>
           )}
         </Form>

@@ -1,4 +1,4 @@
-import { Cell, cellText, dateLine, headerLayout, Letterhead, ReportDocument } from './document';
+import { Cell, cellText, dateLine, DEFAULT_COSIGNER_HINT, DEFAULT_SIGNER_HINT, headerLayout, Letterhead, ReportDocument, ReportPage, Signer } from './document';
 
 // The same report as an .xlsx workbook: letterhead, title, bordered tables and
 // the signature block, in Times New Roman like the PDF.
@@ -15,7 +15,9 @@ export async function renderXlsx(report: ReportDocument, letterhead: Letterhead)
   const wb = new ExcelJS.Workbook();
   wb.creator = letterhead.schoolName;
   const ws = wb.addWorksheet('Báo cáo', { pageSetup: { paperSize: 9, orientation: report.orientation ?? 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
-  const tables = report.blocks.filter((b) => b.type === 'table');
+  // Certificates keep only their table here; other pages (the list attached to a decision) follow the main one.
+  const pages: ReportPage[] = [report, ...(report.pdf === 'pages' ? [] : (report.pages ?? []))];
+  const tables = pages.flatMap((p) => p.blocks).filter((b) => b.type === 'table');
   const cols = Math.max(4, ...tables.map((t) => t.columns.length));
   const widest = tables.reduce((best, t) => (t.columns.length > best.columns.length ? t : best), tables[0] ?? { columns: [] });
   ws.columns = Array.from({ length: cols }, (_, i) => ({ width: Math.max(6, Math.round((widest.columns[i]?.width ?? 1) * 9)) }));
@@ -35,61 +37,74 @@ export async function renderXlsx(report: ReportDocument, letterhead: Letterhead)
   r++;
   put(r, 1, half, letterhead.schoolName.toUpperCase(), { bold: true, underline: true });
   put(r, half + 1, cols, 'Độc lập - Tự do - Hạnh phúc', { bold: true, underline: true });
-  r += 2;
-  put(r++, 1, cols, report.title.toUpperCase(), { bold: true, size: 14 });
-  for (const s of report.subtitles ?? []) put(r++, 1, cols, s, { italic: true });
   r++;
+  if (report.number) put(r, 1, half, report.number);
+  if (report.dateAtTop) put(r, half + 1, cols, dateLine(letterhead.place, report.date ?? letterhead.date), { italic: true });
+  r += report.number || report.dateAtTop ? 2 : 1;
 
-  for (const block of report.blocks) {
-    if (block.type === 'text') {
-      for (const line of block.lines) put(r++, 1, cols, line, { bold: block.bold, italic: block.italic, align: 'left' });
-      r++;
-      continue;
-    }
-    if (block.type === 'fields') {
-      for (let i = 0; i < block.fields.length; i += 2) {
-        const pair = (j: number) => (block.fields[i + j] ? `${block.fields[i + j][0]}: ${cellText(block.fields[i + j][1])}` : '');
-        put(r, 1, half, pair(0), { align: 'left' });
-        put(r, half + 1, cols, pair(1), { align: 'left' });
+  const sign = (s: Signer, from: number, to: number, hint: string, at: number) => {
+    put(at, from, to, s.title.toUpperCase(), { bold: true });
+    put(at + 1, from, to, s.hint ?? hint, { italic: true, size: 10 });
+    if (s.name) put(at + 5, from, to, s.name, { bold: true });
+  };
+
+  for (const [p, page] of pages.entries()) {
+    if (p > 0) r += 2;
+    if (page.title) put(r++, 1, cols, page.title.toUpperCase(), { bold: true, size: 14 });
+    for (const s of page.subtitles ?? []) put(r++, 1, cols, s, { italic: page.subtitleStyle !== 'bold', bold: page.subtitleStyle === 'bold' });
+    if (page.title || page.subtitles?.length) r++;
+
+    for (const block of page.blocks) {
+      if (block.type === 'text') {
+        for (const line of block.lines) put(r++, 1, cols, line, { bold: block.bold, italic: block.italic, align: block.align === 'center' ? 'center' : 'left' });
+        r++;
+        continue;
+      }
+      if (block.type === 'fields') {
+        for (let i = 0; i < block.fields.length; i += 2) {
+          const pair = (j: number) => (block.fields[i + j] ? `${block.fields[i + j][0]}: ${cellText(block.fields[i + j][1])}` : '');
+          put(r, 1, half, pair(0), { align: 'left' });
+          put(r, half + 1, cols, pair(1), { align: 'left' });
+          r++;
+        }
+        r++;
+        continue;
+      }
+      if (block.caption) put(r++, 1, cols, block.caption, { bold: true, align: 'left' });
+      const layout = headerLayout(block.columns);
+      const head = (row: number, col: number, rowSpan: number, span: number, label: string) => {
+        if (rowSpan > 1 || span > 1) ws.mergeCells(row, col, row + rowSpan - 1, col + span - 1);
+        const c = ws.getCell(row, col);
+        c.value = label;
+        c.font = { name: FONT, size: 11, bold: true };
+        c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EEF3' } };
+        for (let i = 0; i < rowSpan; i++) for (let j = 0; j < span; j++) ws.getCell(row + i, col + j).border = border;
+      };
+      for (const c of layout.top) head(r, c.start + 1, c.rowSpan, c.span, c.label);
+      for (const c of layout.second) head(r + 1, c.start + 1, 1, 1, c.label);
+      r += layout.rows;
+      for (const row of block.rows) {
+        block.columns.forEach((col, i) => {
+          const c = ws.getCell(r, i + 1);
+          const v: Cell = row[i];
+          c.value = v === null || v === undefined ? null : v;
+          c.font = { name: FONT, size: 11 };
+          c.alignment = { horizontal: col.align ?? (typeof v === 'number' ? 'center' : 'left'), vertical: 'middle', wrapText: true };
+          c.border = border;
+        });
         r++;
       }
       r++;
-      continue;
     }
-    if (block.caption) put(r++, 1, cols, block.caption, { bold: true, align: 'left' });
-    const layout = headerLayout(block.columns);
-    const head = (row: number, col: number, rowSpan: number, span: number, label: string) => {
-      if (rowSpan > 1 || span > 1) ws.mergeCells(row, col, row + rowSpan - 1, col + span - 1);
-      const c = ws.getCell(row, col);
-      c.value = label;
-      c.font = { name: FONT, size: 11, bold: true };
-      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EEF3' } };
-      for (let i = 0; i < rowSpan; i++) for (let j = 0; j < span; j++) ws.getCell(row + i, col + j).border = border;
-    };
-    for (const c of layout.top) head(r, c.start + 1, c.rowSpan, c.span, c.label);
-    for (const c of layout.second) head(r + 1, c.start + 1, 1, 1, c.label);
-    r += layout.rows;
-    for (const row of block.rows) {
-      block.columns.forEach((col, i) => {
-        const c = ws.getCell(r, i + 1);
-        const v: Cell = row[i];
-        c.value = v === null || v === undefined ? null : v;
-        c.font = { name: FONT, size: 11 };
-        c.alignment = { horizontal: col.align ?? (typeof v === 'number' ? 'center' : 'left'), vertical: 'middle', wrapText: true };
-        c.border = border;
-      });
-      r++;
-    }
-    r++;
-  }
 
-  if (report.signature !== false) {
-    put(r++, half + 1, cols, dateLine(letterhead.place, letterhead.date), { italic: true });
-    put(r++, half + 1, cols, (letterhead.signerTitle ?? 'Hiệu trưởng').toUpperCase(), { bold: true });
-    put(r++, half + 1, cols, '(Ký, ghi rõ họ tên và đóng dấu)', { italic: true, size: 10 });
-    r += 3;
-    if (letterhead.signerName) put(r, half + 1, cols, letterhead.signerName, { bold: true });
+    if (page.signature !== false) {
+      if (!page.dateAtTop) put(r++, half + 1, cols, dateLine(letterhead.place, page.date ?? letterhead.date), { italic: true });
+      sign(page.signer ?? { title: letterhead.signerTitle ?? 'Hiệu trưởng', name: letterhead.signerName }, half + 1, cols, DEFAULT_SIGNER_HINT, r);
+      if (page.cosigner) sign(page.cosigner, 1, half, DEFAULT_COSIGNER_HINT, r);
+      else page.footnote?.forEach((line, i) => put(r + i, 1, half, line, { bold: i === 0, italic: i === 0, size: i === 0 ? 11 : 10, align: 'left' }));
+      r += Math.max(6, page.cosigner ? 0 : (page.footnote?.length ?? 0)) + 1;
+    }
   }
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
