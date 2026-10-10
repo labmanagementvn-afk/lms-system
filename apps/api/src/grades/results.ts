@@ -4,7 +4,7 @@ import { academicLevel, promotionFor, semesterAverage, semesterPassed, SubjectOu
 // Turns Score rows into SubjectResult and TermResult rows. Shared by the API
 // service and the demo seed, so it only needs a PrismaClient.
 
-export type Db = Pick<PrismaClient, 'subjectSetting' | 'enrollment' | 'score' | 'subjectResult' | 'termResult' | '$transaction'>;
+export type Db = Pick<PrismaClient, 'subjectSetting' | 'enrollment' | 'score' | 'subjectResult' | 'termResult' | 'subjectExemption' | '$transaction'>;
 
 export interface SubjectSettingLike {
   assessment: AssessmentType;
@@ -96,6 +96,17 @@ export async function loadSettings(db: Db, schoolId: string): Promise<Map<string
 const key = (studentId: string, subjectId: string, semester: number) => `${studentId}|${subjectId}|${semester}`;
 
 /**
+ * Which semesters of a subject a student is exempt from (miễn học). An exemption
+ * for the year (semester 0) covers both semesters; exempt from both semesters
+ * means exempt for the year, and exempt from one means the year takes the other.
+ */
+export function exemptTerms(rows: { semester: number }[]): { hk1: boolean; hk2: boolean; year: boolean } {
+  const hk1 = rows.some((r) => r.semester === 1 || r.semester === YEAR);
+  const hk2 = rows.some((r) => r.semester === 2 || r.semester === YEAR);
+  return { hk1, hk2, year: hk1 && hk2 };
+}
+
+/**
  * Recomputes SubjectResult rows (HK1, HK2, year) for the scoped subjects and
  * students, then refreshes their TermResult rows (academic level; title and
  * promotion for the year). Conduct, absent days and the homeroom comment are
@@ -113,20 +124,22 @@ export async function recomputeResults(db: Db, scope: RecomputeScope) {
   const settings = await loadSettings(db, schoolId);
   const settingOf = (subjectId: string) => settings.get(subjectId) ?? DEFAULT_SETTING;
 
-  const [scores, existing, terms] = await Promise.all([
+  const [scores, existing, terms, exemptions] = await Promise.all([
     db.score.findMany({
       where: { classId, academicYearId, studentId: { in: studentIds }, ...(scope.subjectIds ? { subjectId: { in: scope.subjectIds } } : {}) },
       select: { studentId: true, subjectId: true, semester: true, kind: true, index: true, value: true, passed: true },
     }),
     db.subjectResult.findMany({
       where: { academicYearId, studentId: { in: studentIds } },
-      select: { studentId: true, subjectId: true, semester: true, average: true, passed: true },
+      select: { studentId: true, subjectId: true, semester: true, average: true, passed: true, exempt: true },
     }),
     db.termResult.findMany({ where: { academicYearId, studentId: { in: studentIds } }, select: { studentId: true, semester: true, conduct: true, absentDays: true } }),
+    db.subjectExemption.findMany({ where: { academicYearId, studentId: { in: studentIds } }, select: { studentId: true, subjectId: true, semester: true } }),
   ]);
+  const exemptOf = (studentId: string, subjectId: string) => exemptTerms(exemptions.filter((e) => e.studentId === studentId && e.subjectId === subjectId));
 
   // Subjects to recompute: the scoped ones, or every subject with marks or results.
-  const subjectIds = scope.subjectIds ?? [...new Set([...scores.map((s) => s.subjectId), ...existing.map((r) => r.subjectId)])];
+  const subjectIds = scope.subjectIds ?? [...new Set([...scores.map((s) => s.subjectId), ...existing.map((r) => r.subjectId), ...exemptions.map((e) => e.subjectId)])];
 
   const byCell = new Map<string, ScoreLike[]>();
   for (const s of scores) {
@@ -138,7 +151,7 @@ export async function recomputeResults(db: Db, scope: RecomputeScope) {
 
   // Outcomes of every subject per student: existing rows overridden by the fresh ones.
   const outcomes = new Map<string, SubjectOutcome>();
-  for (const r of existing) outcomes.set(key(r.studentId, r.subjectId, r.semester), { assessment: settingOf(r.subjectId).assessment, average: num(r.average), passed: r.passed });
+  for (const r of existing) if (!r.exempt) outcomes.set(key(r.studentId, r.subjectId, r.semester), { assessment: settingOf(r.subjectId).assessment, average: num(r.average), passed: r.passed });
 
   const ops: Prisma.PrismaPromise<unknown>[] = [];
   for (const studentId of studentIds) {
@@ -146,18 +159,23 @@ export async function recomputeResults(db: Db, scope: RecomputeScope) {
       const setting = settingOf(subjectId);
       const hk1 = sheetOutcome(toMarkSheet(byCell.get(key(studentId, subjectId, 1)) ?? [], setting.regularCount), setting);
       const hk2 = sheetOutcome(toMarkSheet(byCell.get(key(studentId, subjectId, 2)) ?? [], setting.regularCount), setting);
-      const year = yearOutcome(hk1, hk2, setting);
-      for (const [semester, o] of [
-        [1, hk1],
-        [2, hk2],
-        [YEAR, year],
+      const ex = exemptOf(studentId, subjectId);
+      const year = ex.year ? hk1 : ex.hk1 ? hk2 : ex.hk2 ? hk1 : yearOutcome(hk1, hk2, setting);
+      for (const [semester, o, exempt] of [
+        [1, hk1, ex.hk1],
+        [2, hk2, ex.hk2],
+        [YEAR, year, ex.year],
       ] as const) {
-        outcomes.set(key(studentId, subjectId, semester), o);
+        const k = key(studentId, subjectId, semester);
+        if (exempt) outcomes.delete(k);
+        else outcomes.set(k, o);
+        const average = exempt ? null : o.average;
+        const passed = exempt ? null : o.passed;
         ops.push(
           db.subjectResult.upsert({
             where: { studentId_subjectId_academicYearId_semester: { studentId, subjectId, academicYearId, semester } },
-            create: { schoolId, academicYearId, semester, classId, studentId, subjectId, average: o.average, passed: o.passed },
-            update: { classId, average: o.average, passed: o.passed },
+            create: { schoolId, academicYearId, semester, classId, studentId, subjectId, average, passed, exempt },
+            update: { classId, average, passed, exempt },
           }),
         );
       }

@@ -1,11 +1,13 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { AssessmentType, NotificationKind, Prisma, PromotionStatus, ResultLevel, Role, ScoreKind, StudentStatus } from '@prisma/client';
+import { AssessmentType, NotificationKind, Prisma, PromotionStatus, ResultLevel, Role, ScoreEditSource, ScoreKind, StudentStatus } from '@prisma/client';
 import { AcademicYearsService } from '../academic-years/academic-years';
 import { serializeCsv } from '../admissions/csv';
 import { AuthUser } from '../common/auth-user';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookQuery, LockDto, ResultsQuery, SaveBookDto, ScoreEntryDto, SubjectSettingDto, UpdateResultDto } from './grades.dto';
+import { cellKey, columnLabel, GradeControlService, lockCovers, Visibility } from './control.service';
+import { readXlsx } from '../reports/xlsx';
 import { DEFAULT_SETTING, loadSettings, MarkSheet, num, orderSubjects, recomputeResults, sheetOutcome, SubjectSettingLike, toMarkSheet } from './results';
 import { assertMark, formatMark, passedLabel, regularCountFor, TITLE_EXCELLENT, TITLE_GOOD, YEAR } from './tt22';
 
@@ -41,6 +43,7 @@ export class GradesService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly years: AcademicYearsService,
+    private readonly control: GradeControlService,
   ) {}
 
   // ---- lookups ----
@@ -146,7 +149,7 @@ export class GradesService {
   }
 
   private async buildBook(schoolId: string, klass: ClassRef, subject: SubjectRef, semester: number) {
-    const [setting, locked, roster, scores] = await Promise.all([
+    const [setting, locked, roster, scores, columnLocks, window, exemptions] = await Promise.all([
       this.settingOf(schoolId, subject.id),
       this.isLocked(klass.id, semester),
       this.roster(klass.id),
@@ -154,7 +157,15 @@ export class GradesService {
         where: { classId: klass.id, subjectId: subject.id, academicYearId: klass.academicYearId, semester },
         select: { studentId: true, subjectId: true, semester: true, kind: true, index: true, value: true, passed: true, note: true },
       }),
+      this.control.locksFor(schoolId, klass.academicYearId, semester, klass.gradeLevel, subject.id),
+      this.control.window(schoolId, klass.academicYearId, semester),
+      this.exemptStudents(klass.academicYearId, subject.id, semester),
     ]);
+    const lockedColumns = [
+      ...Array.from({ length: setting.regularCount }, (_, i) => ({ kind: ScoreKind.TX, index: i + 1 })),
+      { kind: ScoreKind.GK, index: 1 },
+      { kind: ScoreKind.CK, index: 1 },
+    ].filter((c) => columnLocks.some((l) => lockCovers(l, klass.gradeLevel, subject.id, c.kind, c.index)));
     const byStudent = new Map<string, typeof scores>();
     for (const s of scores) {
       const list = byStudent.get(s.studentId);
@@ -176,6 +187,7 @@ export class GradesService {
         average: outcome.average,
         passedResult: outcome.passed,
         note,
+        exempt: exemptions.has(student.id),
       };
     });
     return {
@@ -184,11 +196,13 @@ export class GradesService {
       semester,
       setting,
       locked,
+      lockedColumns,
+      window,
       students,
     };
   }
 
-  async saveBook(user: AuthUser, dto: SaveBookDto) {
+  async saveBook(user: AuthUser, dto: SaveBookDto, source: ScoreEditSource = ScoreEditSource.MANUAL) {
     const schoolId = user.schoolId;
     const [klass, subject, setting] = await Promise.all([this.getClass(schoolId, dto.classId), this.getSubject(schoolId, dto.subjectId), this.settingOf(schoolId, dto.subjectId)]);
     if (await this.isLocked(klass.id, dto.semester)) throw new BadRequestException(LOCKED_MESSAGE);
@@ -197,13 +211,26 @@ export class GradesService {
     const entries = dto.entries.map((e) => this.normalizeEntry(e, setting, known));
     const teacher = await this.teacherOf(user);
     const studentIds = [...new Set(entries.map((e) => e.studentId))];
+    const exempt = await this.exemptStudents(klass.academicYearId, subject.id, dto.semester);
+    const exemptEntry = entries.find((e) => exempt.has(e.studentId) && (e.value !== undefined || e.passed !== undefined));
+    if (exemptEntry) throw new BadRequestException(`${known.get(exemptEntry.studentId)?.fullName ?? 'Học sinh'} được miễn học môn này`);
 
-    // Snapshot GK/CK before saving so only real changes trigger a notification.
+    // Snapshot the touched cells: the edit log, the edit limit and GK/CK notifications compare against it.
     const before = await this.prisma.score.findMany({
-      where: { classId: klass.id, subjectId: subject.id, academicYearId: klass.academicYearId, semester: dto.semester, studentId: { in: studentIds }, kind: { in: [ScoreKind.GK, ScoreKind.CK] } },
-      select: { studentId: true, kind: true, value: true, passed: true },
+      where: { classId: klass.id, subjectId: subject.id, academicYearId: klass.academicYearId, semester: dto.semester, studentId: { in: studentIds } },
+      select: { studentId: true, kind: true, index: true, value: true, passed: true },
     });
-    const prior = new Map(before.map((b) => [`${b.studentId}|${b.kind}`, { value: num(b.value), passed: b.passed }]));
+    const cells = new Map(before.map((b) => [cellKey(b.studentId, b.kind, b.index), { value: num(b.value), passed: b.passed }]));
+    const prior = new Map(before.filter((b) => b.kind !== ScoreKind.TX).map((b) => [`${b.studentId}|${b.kind}`, { value: num(b.value), passed: b.passed }]));
+    const marked = entries.filter((e) => e.value !== undefined || e.passed !== undefined);
+    await this.control.assertCanWrite(user, { academicYearId: klass.academicYearId, semester: dto.semester, gradeLevel: klass.gradeLevel, subjectId: subject.id, classId: klass.id }, marked, cells);
+    const edits = marked.flatMap((e) => {
+      const old = cells.get(cellKey(e.studentId, e.kind, e.index)) ?? { value: null, passed: null };
+      const value = e.value === undefined ? old.value : e.value;
+      const passed = e.passed === undefined ? old.passed : e.passed;
+      if (value === old.value && passed === old.passed) return [];
+      return [{ schoolId, academicYearId: klass.academicYearId, semester: dto.semester, classId: klass.id, studentId: e.studentId, subjectId: subject.id, kind: e.kind, index: e.index, oldValue: old.value, newValue: value, oldPassed: old.passed, newPassed: passed, editedById: user.userId, source }];
+    });
 
     await this.prisma.$transaction(
       entries.map((e) => {
@@ -232,6 +259,7 @@ export class GradesService {
         });
       }),
     );
+    if (edits.length) await this.prisma.scoreEdit.createMany({ data: edits });
 
     await recomputeResults(this.prisma, { schoolId, academicYearId: klass.academicYearId, classId: klass.id, studentIds, subjectIds: [subject.id] });
 
@@ -297,6 +325,86 @@ export class GradesService {
     return serializeCsv([title, header, ...rows], CSV_OPTIONS);
   }
 
+  private async exemptStudents(academicYearId: string, subjectId: string, semester: number): Promise<Set<string>> {
+    const rows = await this.prisma.subjectExemption.findMany({ where: { academicYearId, subjectId, semester: { in: [semester, YEAR] } }, select: { studentId: true } });
+    return new Set(rows.map((r) => r.studentId));
+  }
+
+  /**
+   * Nhập điểm từ Excel: the sheet exported by the subject-scores report (or any
+   * sheet with a "Mã HS" column and TX1..n, GK, CK, Ghi chú columns). Empty
+   * cells leave the mark as it is. With dryRun nothing is saved.
+   */
+  async importBook(user: AuthUser, query: BookQuery & { dryRun?: boolean }, buffer: Buffer) {
+    let sheet: (string | number | null)[][];
+    try {
+      sheet = await readXlsx(buffer);
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
+    const book = await this.book(user.schoolId, query);
+    const comment = book.setting.assessment === AssessmentType.COMMENT;
+    const norm = (v: unknown) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const headerAt = sheet.findIndex((row) => row.some((c) => norm(c) === 'mã hs'));
+    if (headerAt < 0) throw new BadRequestException('Không tìm thấy cột "Mã HS" trong tệp');
+    const header = sheet[headerAt].map(norm);
+    const col = (name: string) => header.indexOf(name);
+    const codeCol = col('mã hs');
+    const columns: { kind: ScoreKind; index: number; at: number }[] = [];
+    for (let i = 1; i <= book.setting.regularCount; i++) if (col(`tx${i}`) >= 0) columns.push({ kind: ScoreKind.TX, index: i, at: col(`tx${i}`) });
+    if (col('gk') >= 0) columns.push({ kind: ScoreKind.GK, index: 1, at: col('gk') });
+    if (col('ck') >= 0) columns.push({ kind: ScoreKind.CK, index: 1, at: col('ck') });
+    const noteCol = col('ghi chú');
+    if (!columns.length) throw new BadRequestException('Không tìm thấy cột điểm (TX1, GK, CK) trong tệp');
+
+    const byCode = new Map(book.students.map((s) => [s.code.toLowerCase(), s]));
+    const entries: ScoreEntryDto[] = [];
+    const errors: { row: number; message: string }[] = [];
+    let changes = 0;
+    for (let r = headerAt + 1; r < sheet.length; r++) {
+      const row = sheet[r] ?? [];
+      const code = norm(row[codeCol]);
+      // The table ends at the first row without a code (notes and the signature follow).
+      if (!code) break;
+      const student = byCode.get(code);
+      if (!student) {
+        errors.push({ row: r + 1, message: `Mã HS ${row[codeCol]} không thuộc lớp ${book.class.name}` });
+        continue;
+      }
+      for (const c of columns) {
+        const raw = row[c.at];
+        if (raw === null || raw === undefined || String(raw).trim() === '') continue;
+        const current = c.kind === ScoreKind.TX ? { v: student.marks.TX[c.index - 1], p: student.passed.TX[c.index - 1] } : { v: student.marks[c.kind], p: student.passed[c.kind] };
+        if (comment) {
+          const t = norm(raw);
+          const passed = ['đ', 'đạt', 'd', 'dat'].includes(t) ? true : ['cđ', 'chưa đạt', 'cd', 'chua dat'].includes(t) ? false : null;
+          if (passed === null) {
+            errors.push({ row: r + 1, message: `${student.fullName}: ${columnLabel(c.kind, c.index)} phải là Đ hoặc CĐ` });
+            continue;
+          }
+          if (passed !== current.p) changes++;
+          entries.push({ studentId: student.id, kind: c.kind, index: c.index, passed });
+        } else {
+          const value = typeof raw === 'number' ? raw : Number(String(raw).trim().replace(',', '.'));
+          if (!Number.isFinite(value) || value < 0 || value > 10 || Math.abs(value * 10 - Math.round(value * 10)) > 1e-6) {
+            errors.push({ row: r + 1, message: `${student.fullName}: ${columnLabel(c.kind, c.index)} "${raw}" không phải điểm 0–10` });
+            continue;
+          }
+          if (value !== current.v) changes++;
+          entries.push({ studentId: student.id, kind: c.kind, index: c.index, value });
+        }
+      }
+      if (noteCol >= 0) {
+        const note = String(row[noteCol] ?? '').trim();
+        if (note && note !== (student.note ?? '')) entries.push({ studentId: student.id, kind: ScoreKind.CK, index: 1, note: note.slice(0, 500) });
+      }
+    }
+    const summary = { students: new Set(entries.map((e) => e.studentId)).size, marks: entries.filter((e) => e.value !== undefined || e.passed !== undefined).length, changes, errors };
+    if (query.dryRun || errors.length) return { ...summary, saved: false };
+    if (entries.length) await this.saveBook(user, { classId: query.classId, subjectId: query.subjectId, semester: query.semester, entries }, ScoreEditSource.IMPORT);
+    return { ...summary, saved: true };
+  }
+
   // ---- results ----
 
   async results(schoolId: string, query: ResultsQuery) {
@@ -311,7 +419,7 @@ export class GradesService {
       this.isLocked(klass.id, semester),
       this.prisma.subjectResult.findMany({
         where: { classId: klass.id, academicYearId: klass.academicYearId, semester },
-        select: { studentId: true, subjectId: true, average: true, passed: true },
+        select: { studentId: true, subjectId: true, average: true, passed: true, exempt: true },
       }),
       this.prisma.termResult.findMany({ where: { classId: klass.id, academicYearId: klass.academicYearId, semester }, select: { studentId: true, ...termSelect } }),
     ]);
@@ -338,7 +446,7 @@ export class GradesService {
         fullName: student.fullName,
         subjects: subjects.map((s) => {
           const r = resultOf.get(`${student.id}|${s.id}`);
-          return { subjectId: s.id, code: s.code, name: s.name, assessment: s.assessment, average: num(r?.average), passed: r?.passed ?? null };
+          return { subjectId: s.id, code: s.code, name: s.name, assessment: s.assessment, average: num(r?.average), passed: r?.passed ?? null, exempt: r?.exempt ?? false };
         }),
         academic: term?.academic ?? null,
         conduct: term?.conduct ?? null,
@@ -432,7 +540,7 @@ export class GradesService {
       i + 1,
       s.code,
       s.fullName,
-      ...s.subjects.map((x) => (x.assessment === AssessmentType.COMMENT ? (passedLabel(x.passed) ?? '') : x.average === null ? '' : formatMark(x.average))),
+      ...s.subjects.map((x) => (x.exempt ? 'MG' : x.assessment === AssessmentType.COMMENT ? (passedLabel(x.passed) ?? '') : x.average === null ? '' : formatMark(x.average))),
       level(s.academic),
       level(s.conduct),
       ...(year ? [s.title ?? '', s.promotion ? PROMOTION_LABEL[s.promotion] : ''] : []),
@@ -459,12 +567,12 @@ export class GradesService {
         select: { class: { select: { id: true, name: true, gradeLevel: true, homeroomTeacher: { select: { id: true, fullName: true } } } } },
       }),
       this.subjectsWithSettings(schoolId),
-      this.prisma.subjectResult.findMany({ where: { studentId, academicYearId: year.id }, select: { subjectId: true, semester: true, average: true, passed: true } }),
+      this.prisma.subjectResult.findMany({ where: { studentId, academicYearId: year.id }, select: { subjectId: true, semester: true, average: true, passed: true, exempt: true } }),
       this.prisma.termResult.findMany({ where: { studentId, academicYearId: year.id }, select: termSelect }),
     ]);
     const cell = (subjectId: string, semester: number) => {
       const r = results.find((x) => x.subjectId === subjectId && x.semester === semester);
-      return { average: num(r?.average), passed: r?.passed ?? null };
+      return { average: num(r?.average), passed: r?.passed ?? null, exempt: r?.exempt ?? false };
     };
     const term = (semester: number) => terms.find((t) => t.semester === semester) ?? null;
     return {
@@ -481,9 +589,29 @@ export class GradesService {
   // ---- student and parent apps ----
 
   /** One student's marks and results for a semester (or the year), as the student and parent apps show them. */
-  async studentGrades(schoolId: string, student: { id: string; code: string; fullName: string }, klass: { id: string; name: string; gradeLevel: number } | null, academicYearId: string | null, semester: number) {
+  async studentGrades(
+    schoolId: string,
+    student: { id: string; code: string; fullName: string },
+    klass: { id: string; name: string; gradeLevel: number } | null,
+    academicYearId: string | null,
+    semester: number,
+    visibility?: Visibility,
+  ) {
     const subjects = await this.subjectsWithSettings(schoolId);
-    if (!klass || !academicYearId) return { student, class: klass, semester, subjects: [], term: null };
+    if (!klass || !academicYearId) return { student, class: klass, semester, subjects: [], term: null, hidden: false };
+    if (visibility?.onlyAfterLock && !(await this.isLocked(klass.id, semester))) return { student, class: klass, semester, subjects: [], term: null, hidden: true };
+    const full = await this.fullStudentGrades(schoolId, subjects, student, klass, academicYearId, semester);
+    return visibility ? applyVisibility(full, visibility) : full;
+  }
+
+  async fullStudentGrades(
+    schoolId: string,
+    subjects: SubjectView[],
+    student: { id: string; code: string; fullName: string },
+    klass: { id: string; name: string; gradeLevel: number },
+    academicYearId: string,
+    semester: number,
+  ) {
     const [scores, results, term] = await Promise.all([
       semester === YEAR
         ? Promise.resolve([])
@@ -491,12 +619,12 @@ export class GradesService {
             where: { studentId: student.id, academicYearId, semester },
             select: { studentId: true, subjectId: true, semester: true, kind: true, index: true, value: true, passed: true, note: true },
           }),
-      this.prisma.subjectResult.findMany({ where: { studentId: student.id, academicYearId }, select: { subjectId: true, semester: true, average: true, passed: true } }),
+      this.prisma.subjectResult.findMany({ where: { studentId: student.id, academicYearId }, select: { subjectId: true, semester: true, average: true, passed: true, exempt: true } }),
       this.prisma.termResult.findFirst({ where: { studentId: student.id, academicYearId, semester }, select: termSelect }),
     ]);
     const cell = (subjectId: string, s: number) => {
       const r = results.find((x) => x.subjectId === subjectId && x.semester === s);
-      return { average: num(r?.average), passed: r?.passed ?? null };
+      return { average: num(r?.average), passed: r?.passed ?? null, exempt: r?.exempt ?? false };
     };
     const rows = subjects.map((s) => {
       const base = { subjectId: s.id, code: s.code, name: s.name, assessment: s.assessment, regularCount: s.regularCount };
@@ -504,13 +632,53 @@ export class GradesService {
       const own = scores.filter((x) => x.subjectId === s.id);
       const sheet: MarkSheet = toMarkSheet(own, s.regularCount);
       const outcome = sheetOutcome(sheet, s);
-      return { ...base, marks: { TX: sheet.TX, GK: sheet.GK, CK: sheet.CK }, passedMarks: sheet.passed, average: outcome.average, passed: outcome.passed, note: own.find((x) => x.kind === ScoreKind.CK)?.note ?? null };
+      const exempt = cell(s.id, semester).exempt;
+      return { ...base, marks: { TX: sheet.TX, GK: sheet.GK, CK: sheet.CK }, passedMarks: sheet.passed, average: outcome.average, passed: outcome.passed, exempt, note: own.find((x) => x.kind === ScoreKind.CK)?.note ?? null };
     });
     // Hide subjects nobody has marked yet so the app does not list the whole catalogue.
-    const shown = rows.filter((r) => ('marks' in r ? r.marks.TX.some((v) => v !== null) || r.marks.GK !== null || r.marks.CK !== null || r.passedMarks.TX.some((v) => v !== null) || r.passedMarks.GK !== null || r.passedMarks.CK !== null : r.hk1.average !== null || r.hk1.passed !== null || r.hk2.average !== null || r.hk2.passed !== null));
-    return { student, class: klass, semester, subjects: shown, term };
+    const shown = rows.filter((r) =>
+      'marks' in r
+        ? r.exempt || r.marks.TX.some((v) => v !== null) || r.marks.GK !== null || r.marks.CK !== null || r.passedMarks.TX.some((v) => v !== null) || r.passedMarks.GK !== null || r.passedMarks.CK !== null
+        : r.exempt || r.hk1.average !== null || r.hk1.passed !== null || r.hk2.average !== null || r.hk2.passed !== null,
+    );
+    return { student, class: klass, semester, subjects: shown, term, hidden: false };
   }
 }
 
-const LEVEL_LABEL: Record<ResultLevel, string> = { TOT: 'Tốt', KHA: 'Khá', DAT: 'Đạt', CHUA_DAT: 'Chưa đạt' };
-const PROMOTION_LABEL: Record<PromotionStatus, string> = { PROMOTED: 'Được lên lớp', RETEST: 'Kiểm tra lại', RETAINED: 'Ở lại lớp' };
+export const LEVEL_LABEL: Record<ResultLevel, string> = { TOT: 'Tốt', KHA: 'Khá', DAT: 'Đạt', CHUA_DAT: 'Chưa đạt' };
+export const PROMOTION_LABEL: Record<PromotionStatus, string> = { PROMOTED: 'Được lên lớp', RETEST: 'Kiểm tra lại', RETAINED: 'Ở lại lớp' };
+
+type StudentGrades = Awaited<ReturnType<GradesService['fullStudentGrades']>>;
+type Term = NonNullable<StudentGrades['term']>;
+/** What families get: hidden absences are null rather than a misleading 0. */
+type FamilyGrades = Omit<StudentGrades, 'term'> & { term: (Omit<Term, 'absentDays'> & { absentDays: number | null }) | null };
+
+/** Blanks out what the school chose not to show families (cấu hình hiển thị cho phụ huynh, học sinh). */
+export function applyVisibility(g: StudentGrades, v: Visibility): FamilyGrades {
+  const subjects = g.subjects.map((row) => {
+    const r = { ...row } as Record<string, any>;
+    if ('marks' in r) {
+      r.marks = { TX: v.regularMarks ? r.marks.TX : r.marks.TX.map(() => null), GK: v.examMarks ? r.marks.GK : null, CK: v.examMarks ? r.marks.CK : null };
+      r.passedMarks = { TX: v.regularMarks ? r.passedMarks.TX : r.passedMarks.TX.map(() => null), GK: v.examMarks ? r.passedMarks.GK : null, CK: v.examMarks ? r.passedMarks.CK : null };
+      if (!v.teacherNotes) r.note = null;
+    }
+    if (!v.averages) {
+      r.average = null;
+      r.passed = null;
+      for (const k of ['hk1', 'hk2']) if (r[k]) r[k] = { ...r[k], average: null, passed: null };
+    }
+    return r as (typeof g.subjects)[number];
+  });
+  const term = g.term
+    ? {
+        ...g.term,
+        academic: v.termResults ? g.term.academic : null,
+        conduct: v.termResults ? g.term.conduct : null,
+        promotion: v.termResults ? g.term.promotion : null,
+        title: v.titles ? g.term.title : null,
+        absentDays: v.absences ? g.term.absentDays : null,
+        homeroomComment: v.homeroomComment ? g.term.homeroomComment : null,
+      }
+    : null;
+  return { ...g, subjects, term };
+}

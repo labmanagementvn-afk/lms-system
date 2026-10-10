@@ -48,6 +48,24 @@ export class UpdateSchoolDto {
   @IsString()
   @MaxLength(100)
   province?: string;
+
+  @ApiPropertyOptional({ example: 'UBND phường Bình Phước', description: 'Cơ quan chủ quản, printed above the school name on reports' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  governingBody?: string;
+
+  @ApiPropertyOptional({ example: 'Trịnh Thị Phương Mai', description: 'Principal, the default signer of reports' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  principalName?: string;
+
+  @ApiPropertyOptional({ example: 'Đồng Nai', description: 'Place on the date line of reports ("Đồng Nai, ngày …")' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  locality?: string;
 }
 
 export class DistrictDateQuery {

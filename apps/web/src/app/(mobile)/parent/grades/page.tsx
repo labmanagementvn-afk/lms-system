@@ -12,6 +12,8 @@ interface Grades {
   semester: number;
   subjects: SubjectMarks[];
   term: TermResult | null;
+  /** The school shows marks only after the class gradebook is locked. */
+  hidden?: boolean;
 }
 
 /** Sổ điểm & kết quả học tập of the selected child. */

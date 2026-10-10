@@ -94,26 +94,36 @@ enum EventSource {
 }
 
 model School {
-  id         String   @id @default(cuid())
-  code       String   @unique
-  name       String
-  address    String?
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  address       String?
   // IANA timezone used for "school day" boundaries and device local times.
-  timezone   String   @default("Asia/Ho_Chi_Minh")
+  timezone      String   @default("Asia/Ho_Chi_Minh")
   // Students whose first check-in is after this local time (HH:mm) are late.
-  lateAfter  String   @default("07:15")
+  lateAfter     String   @default("07:15")
   // Phase 5: the Phòng / Sở GD&ĐT the school reports to, and its code in the MOET education database (CSDL ngành).
-  districtId String?
-  moetCode   String?
-  province   String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  districtId    String?
+  moetCode      String?
+  province      String?
+  // Phase 6: letterhead and signer of official reports ("UBND phường Bình Phước", the principal, the place on the date line).
+  governingBody String?
+  principalName String?
+  locality      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   district    District?    @relation(fields: [districtId], references: [id])
   dailyStats  DailyStat[]
   alertRules  AlertRule[]
   alertEvents AlertEvent[]
   moetExports MoetExport[]
+
+  gradeColumnLocks  GradeColumnLock[]
+  gradeEntryWindows GradeEntryWindow[]
+  scoreEdits        ScoreEdit[]
+  subjectExemptions SubjectExemption[]
+  gradeVisibility   GradeVisibility?
 
   users         User[]
   teachers      Teacher[]
@@ -239,6 +249,8 @@ model Subject {
   courses        Course[]
   questions      Question[]
   tests          Test[]
+  columnLocks    GradeColumnLock[]
+  exemptions     SubjectExemption[]
 
   @@unique([schoolId, code])
 }
@@ -332,6 +344,7 @@ model Student {
   lessonProgress     LessonProgress[]
   testAttempts       TestAttempt[]
   liveAttendances    LiveAttendance[]
+  subjectExemptions  SubjectExemption[]
 
   @@unique([schoolId, code])
   @@index([schoolId, fullName])
@@ -2005,6 +2018,8 @@ model SubjectResult {
   studentId      String
   subjectId      String
   average        Decimal? @db.Decimal(4, 1)
+  // Phase 6: miễn học (MG). Exempt subjects have no average and do not count towards the term result.
+  exempt         Boolean  @default(false)
   passed         Boolean?
   comment        String?
   updatedAt      DateTime @updatedAt
@@ -2663,4 +2678,116 @@ model MoetExport {
   school School @relation(fields: [schoolId], references: [id])
 
   @@index([schoolId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: gradebook control (column locks, entry window, edit log), exemptions,
+// what families see of grades.
+// ---------------------------------------------------------------------------
+
+/// Locks one mark column of a grade level for a semester ("khóa điểm" per khối × môn × cột).
+model GradeColumnLock {
+  id             String    @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  gradeLevel     Int
+  /// Null locks the column in every subject.
+  subjectId      String?
+  kind           ScoreKind
+  /// TX column number; 0 locks every TX column. Always 0 for GK and CK.
+  index          Int       @default(0)
+  lockedById     String
+  lockedAt       DateTime  @default(now())
+
+  school  School   @relation(fields: [schoolId], references: [id])
+  subject Subject? @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, academicYearId, semester, gradeLevel])
+}
+
+/// When teachers may enter marks in a semester and how many times a mark may be changed once entered.
+model GradeEntryWindow {
+  id             String    @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  opensAt        DateTime?
+  closesAt       DateTime?
+  /// Changes a teacher may make to a mark that already had a value; null = unlimited.
+  maxEdits       Int?
+  updatedAt      DateTime  @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@unique([academicYearId, semester])
+}
+
+enum ScoreEditSource {
+  MANUAL
+  IMPORT
+}
+
+/// Every change to a mark (the "thống kê sửa điểm" log).
+model ScoreEdit {
+  id             String          @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  classId        String
+  studentId      String
+  subjectId      String
+  kind           ScoreKind
+  index          Int
+  oldValue       Decimal?        @db.Decimal(4, 1)
+  newValue       Decimal?        @db.Decimal(4, 1)
+  oldPassed      Boolean?
+  newPassed      Boolean?
+  editedById     String
+  source         ScoreEditSource @default(MANUAL)
+  createdAt      DateTime        @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, academicYearId, semester])
+  @@index([classId, subjectId, semester])
+  @@index([studentId, subjectId, academicYearId, semester, kind, index])
+}
+
+/// Miễn học môn (e.g. physical education on medical grounds) for a semester, or the year (semester 0).
+model SubjectExemption {
+  id             String   @id @default(cuid())
+  schoolId       String
+  academicYearId String
+  semester       Int
+  studentId      String
+  subjectId      String
+  reason         String?
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, subjectId, academicYearId, semester])
+  @@index([schoolId, academicYearId])
+}
+
+/// What the parent and student apps show of grades (SMAS "cấu hình EduOne").
+model GradeVisibility {
+  schoolId        String   @id
+  regularMarks    Boolean  @default(true)
+  examMarks       Boolean  @default(true)
+  averages        Boolean  @default(true)
+  termResults     Boolean  @default(true)
+  titles          Boolean  @default(true)
+  absences        Boolean  @default(true)
+  homeroomComment Boolean  @default(true)
+  teacherNotes    Boolean  @default(true)
+  /// Hide marks of the current semester until the school locks the class's gradebook.
+  onlyAfterLock   Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
 }
